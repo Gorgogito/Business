@@ -1,0 +1,137 @@
+﻿@page "/proveedores"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Proveedores - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Proveedores</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudTextField @bind-Value="_search" Label="Buscar" Variant="Variant.Outlined"
+                AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Immediate="true" />
+        </CardHeaderContent>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("masters.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nuevo Proveedor</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="ProveedorModel" Items="_proveedores.Where(Filter)" Loading="_loading"
+            Filterable="false" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.RazonSocial" Title="Razón Social" />
+                <PropertyColumn Property="x => x.RUC" Title="RUC" />
+                <PropertyColumn Property="x => x.Telefono" Title="Teléfono" />
+                <PropertyColumn Property="x => x.Email" Title="Email" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Error)">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("masters.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteProveedor(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nuevo Proveedor" : "Editar Proveedor")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.RazonSocial" Label="Razón Social" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.RUC" Label="RUC" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Telefono" Label="Teléfono" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Direccion" Label="Dirección" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Email" Label="Email" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProveedor">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<ProveedorModel> _proveedores = new();
+    private bool _loading = true;
+    private string _search = string.Empty;
+    private bool _showDialog;
+    private ProveedorModel _editing = new();
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<ProveedorModel>>("api/proveedores");
+        if (result?.Success == true) _proveedores = result.Data ?? new();
+        _loading = false;
+    }
+
+    private bool Filter(ProveedorModel p) =>
+        string.IsNullOrWhiteSpace(_search) ||
+        p.RazonSocial.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        p.RUC.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private void OpenCreateDialog() { _editing = new ProveedorModel(); _showDialog = true; }
+
+    private void OpenEditDialog(ProveedorModel p)
+    {
+        _editing = new ProveedorModel { Id = p.Id, RazonSocial = p.RazonSocial, RUC = p.RUC,
+            Direccion = p.Direccion, Telefono = p.Telefono, Email = p.Email };
+        _showDialog = true;
+    }
+
+    private async Task SaveProveedor()
+    {
+        var data = new { _editing.RazonSocial, _editing.RUC, _editing.Direccion, _editing.Telefono, _editing.Email, TipoDocumento = "RUC" };
+        ApiResponse<ProveedorModel>? result;
+        if (_editing.Id == 0)
+            result = await ApiService.PostAsync<ProveedorModel>("api/proveedores", data);
+        else
+            result = await ApiService.PutAsync<ProveedorModel>($"api/proveedores/{_editing.Id}", data);
+
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+
+    private async Task DeleteProveedor(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/proveedores/{id}");
+        if (result?.Success == true) { Snackbar.Add("Proveedor eliminado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

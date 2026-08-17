@@ -1,0 +1,175 @@
+﻿@page "/cotizaciones"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Cotizaciones - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Cotizaciones</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("sales.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="@(() => _showCreate = true)">Nueva Cotización</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="CotizacionModel" Items="_cotizaciones" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <PropertyColumn Property="x => x.ClienteNombre" Title="Cliente" />
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Vence">
+                    <CellTemplate>@context.Item.FechaVencimiento.ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Total">
+                    <CellTemplate>S/ @context.Item.Total.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@GetEstadoColor(context.Item.Estado)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("sales.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small"
+                                title="Aprobar" OnClick="@(() => CambiarEstado(context.Item.Id, "APROBADA"))"
+                                Disabled="@(context.Item.Estado != "BORRADOR")" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Rechazar" OnClick="@(() => CambiarEstado(context.Item.Id, "RECHAZADA"))"
+                                Disabled="@(context.Item.Estado == "APROBADA" || context.Item.Estado == "RECHAZADA")" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)">
+        <TitleContent><MudText Typo="Typo.h6">Nueva Cotización</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_newClienteId" Label="Cliente" Variant="Variant.Outlined" Required="true">
+                        @foreach (var c in _clientes)
+                        { <MudSelectItem Value="@c.Id">@c.RazonSocial</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_fechaVencimiento" Label="Fecha Vencimiento" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_observaciones" Label="Observaciones" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1">Detalle de Productos</MudText>
+                    @foreach (var det in _detalles)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="4">
+                                <MudSelect @bind-Value="det.ProductoId" Label="Producto" Variant="Variant.Outlined" Dense="true">
+                                    @foreach (var p in _productos)
+                                    { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudNumericField @bind-Value="det.Cantidad" Label="Cant." Variant="Variant.Outlined" Margin="Margin.Dense" Min="1m" />
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="det.PrecioUnitario" Label="Precio" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudNumericField @bind-Value="det.Descuento" Label="Desc." Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                    OnClick="@(() => _detalles.Remove(det))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Size="Size.Small"
+                        Class="mt-2" OnClick="AddDetalle">Agregar Producto</MudButton>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCotizacion" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<CotizacionModel> _cotizaciones = new();
+    private List<ClienteModel> _clientes = new();
+    private List<ProductoModel> _productos = new();
+    private bool _loading = true, _saving, _showCreate;
+    private int _newClienteId;
+    private DateTime? _fechaVencimiento = DateTime.Now.AddDays(30);
+    private string _observaciones = string.Empty;
+    private List<CotizacionDetalleModel> _detalles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cResult = await ApiService.GetAsync<List<ClienteModel>>("api/clientes");
+        if (cResult?.Success == true) _clientes = cResult.Data ?? new();
+        var pResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (pResult?.Success == true) _productos = pResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<CotizacionModel>>("api/cotizaciones");
+        if (result?.Success == true) _cotizaciones = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void AddDetalle() => _detalles.Add(new CotizacionDetalleModel { Cantidad = 1 });
+
+    private Color GetEstadoColor(string estado) => estado switch
+    {
+        "APROBADA" => Color.Success, "RECHAZADA" => Color.Error,
+        "ENVIADA" => Color.Info, _ => Color.Default
+    };
+
+    private async Task SaveCotizacion()
+    {
+        if (_newClienteId == 0 || !_detalles.Any()) { Snackbar.Add("Complete cliente y al menos un producto", Severity.Warning); return; }
+        _saving = true;
+        var data = new {
+            ClienteId = _newClienteId,
+            FechaVencimiento = _fechaVencimiento ?? DateTime.Now.AddDays(30),
+            Observaciones = _observaciones,
+            Detalles = _detalles.Select(d => new { d.ProductoId, d.Cantidad, d.PrecioUnitario, d.Descuento })
+        };
+        var result = await ApiService.PostAsync<CotizacionModel>("api/cotizaciones", data);
+        if (result?.Success == true) {
+            Snackbar.Add("Cotización creada", Severity.Success);
+            _showCreate = false; _detalles.Clear(); _observaciones = string.Empty; _newClienteId = 0;
+            await LoadData();
+        } else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task CambiarEstado(int id, string estado)
+    {
+        var result = await ApiService.PatchAsync<CotizacionModel>($"api/cotizaciones/{id}/estado", estado);
+        if (result?.Success == true) { Snackbar.Add("Estado actualizado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

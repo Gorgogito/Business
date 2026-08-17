@@ -1,0 +1,184 @@
+@page "/reportes"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject IJSRuntime JS
+
+<PageTitle>Reportes - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Reportes y Estadísticas</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+else if (_dashboard != null)
+{
+    <MudGrid>
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6" Class="mb-3">Resumen General</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="3">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Total Clientes</MudText>
+                    <MudText Typo="Typo.h3" Color="Color.Primary">@_dashboard.TotalClientes</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="3">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Total Proveedores</MudText>
+                    <MudText Typo="Typo.h3" Color="Color.Secondary">@_dashboard.TotalProveedores</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="3">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Total Productos</MudText>
+                    <MudText Typo="Typo.h3" Color="Color.Success">@_dashboard.TotalProductos</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="3">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Ventas del Mes</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Warning">S/ @_dashboard.VentasMes.ToString("N2")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="3">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Ventas Mensuales (últimos 6 meses)</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_dashboard.VentasMensuales.Any())
+                    {
+                        <MudTable Items="_dashboard.VentasMensuales" Dense="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>Mes</MudTh>
+                                <MudTh>Total</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Mes</MudTd>
+                                <MudTd><b>S/ @context.Total.ToString("N2")</b></MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Secondary">Sin datos de ventas mensuales</MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="3">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Indicadores de Gestión</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudList T="string" Dense="true">
+                        <MudListItem Icon="@Icons.Material.Filled.ShoppingCart">
+                            Pedidos Pendientes: <b>@_dashboard.PedidosPendientes</b>
+                        </MudListItem>
+                        <MudListItem Icon="@Icons.Material.Filled.Assignment">
+                            OC Pendientes: <b>@_dashboard.OrdenesCompraPendientes</b>
+                        </MudListItem>
+                        <MudListItem Icon="@Icons.Material.Filled.ShoppingBag">
+                            Compras del Mes: <b>S/ @_dashboard.ComprasMes.ToString("N2")</b>
+                        </MudListItem>
+                    </MudList>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudCard Elevation="3">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Exportar Reportes (CSV)</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        @if (AppState.HasPermission("sales.view"))
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Ventas por período</MudText>
+                                <MudGrid Class="align-center">
+                                    <MudItem xs="5">
+                                        <MudDatePicker @bind-Date="_ventasDesde" Label="Desde" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                    </MudItem>
+                                    <MudItem xs="5">
+                                        <MudDatePicker @bind-Date="_ventasHasta" Label="Hasta" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                    </MudItem>
+                                    <MudItem xs="2">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Download" Color="Color.Primary" OnClick="DescargarVentasCsv" />
+                                    </MudItem>
+                                </MudGrid>
+                            </MudItem>
+                        }
+                        @if (AppState.HasPermission("inventory.view"))
+                        {
+                            <MudItem xs="12" md="6" Class="d-flex align-center">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                                    OnClick="DescargarInventarioCsv">Valorización de Inventario</MudButton>
+                            </MudItem>
+                        }
+                        @if (AppState.HasPermission("sales.view"))
+                        {
+                            <MudItem xs="12" md="6" Class="d-flex align-center">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                                    OnClick="DescargarCarteraCobrarCsv">Cartera por Cobrar</MudButton>
+                            </MudItem>
+                        }
+                        @if (AppState.HasPermission("purchases.view"))
+                        {
+                            <MudItem xs="12" md="6" Class="d-flex align-center">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                                    OnClick="DescargarCarteraPagarCsv">Cartera por Pagar</MudButton>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private DashboardModel? _dashboard;
+    private bool _loading = true;
+    private DateTime? _ventasDesde = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private DateTime? _ventasHasta = DateTime.Now.Date;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await ApiService.GetAsync<DashboardModel>("api/dashboard");
+        if (result?.Success == true) _dashboard = result.Data;
+        _loading = false;
+    }
+
+    private async Task DescargarVentasCsv()
+    {
+        var q = $"?desde={_ventasDesde:yyyy-MM-dd}&hasta={_ventasHasta:yyyy-MM-dd}";
+        await ApiService.DownloadFileAsync(JS, $"api/reportes/ventas/csv{q}", "ventas.csv");
+    }
+
+    private async Task DescargarInventarioCsv()
+        => await ApiService.DownloadFileAsync(JS, "api/reportes/inventario/csv", "valorizacion_inventario.csv");
+
+    private async Task DescargarCarteraCobrarCsv()
+        => await ApiService.DownloadFileAsync(JS, "api/reportes/cartera-cobrar/csv", "cartera_por_cobrar.csv");
+
+    private async Task DescargarCarteraPagarCsv()
+        => await ApiService.DownloadFileAsync(JS, "api/reportes/cartera-pagar/csv", "cartera_por_pagar.csv");
+}

@@ -1,0 +1,254 @@
+@page "/trabajadores"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Trabajadores - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Trabajadores</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("hr.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                    OnClick="OpenCreateDialog">Nuevo Trabajador</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="TrabajadorModel" Items="_trabajadores" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Codigo" Title="Código" />
+                <PropertyColumn Property="x => x.NombreCompleto" Title="Nombre" />
+                <PropertyColumn Property="x => x.NumeroDocumento" Title="Documento" />
+                <PropertyColumn Property="x => x.Cargo" Title="Cargo" />
+                <TemplateColumn Title="Ingreso">
+                    <CellTemplate>@context.Item.FechaIngreso.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Sueldo básico">
+                    <CellTemplate>S/ @context.Item.SueldoBasico.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Régimen">
+                    <CellTemplate>@context.Item.RegimenPension @(context.Item.AfpNombre != null ? $"({context.Item.AfpNombre})" : "")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.Estado == "ACTIVO" ? Color.Success : Color.Default)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("hr.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                OnClick="@(() => OpenEditDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.PersonOff" Color="Color.Warning" Size="Size.Small"
+                                title="Cesar" Disabled="@(context.Item.Estado != "ACTIVO")"
+                                OnClick="@(() => OpenCesarDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                OnClick="@(() => DeleteTrabajador(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nuevo Trabajador" : "Editar Trabajador")</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudSelect @bind-Value="_editing.TipoDocumento" Label="Tipo Documento" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("DNI")">DNI</MudSelectItem>
+                        <MudSelectItem Value="@("CE")">Carné de Extranjería</MudSelectItem>
+                        <MudSelectItem Value="@("PASAPORTE")">Pasaporte</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_editing.NumeroDocumento" Label="Número de Documento" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_editing.Nombres" Label="Nombres" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_editing.ApellidoPaterno" Label="Apellido Paterno" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_editing.ApellidoMaterno" Label="Apellido Materno" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_fechaNacimiento" Label="Fecha de Nacimiento" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_editing.Sexo" Label="Sexo" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("M")">Masculino</MudSelectItem>
+                        <MudSelectItem Value="@("F")">Femenino</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_editing.Telefono" Label="Teléfono" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Direccion" Label="Dirección" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Email" Label="Email" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Cargo" Label="Cargo" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_fechaIngreso" Label="Fecha de Ingreso" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect @bind-Value="_editing.TipoContrato" Label="Tipo de Contrato" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("INDEFINIDO")">Indefinido</MudSelectItem>
+                        <MudSelectItem Value="@("PLAZO_FIJO")">Plazo Fijo</MudSelectItem>
+                        <MudSelectItem Value="@("TIEMPO_PARCIAL")">Tiempo Parcial</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_editing.SueldoBasico" Label="Sueldo Básico" Variant="Variant.Outlined" Min="0m" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSwitch @bind-Value="_editing.TieneAsignacionFamiliar" Color="Color.Primary" Label="Tiene asignación familiar" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.RegimenPension" Label="Régimen Pensionario" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("ONP")">ONP</MudSelectItem>
+                        <MudSelectItem Value="@("AFP")">AFP</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                @if (_editing.RegimenPension == "AFP")
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="string" @bind-Value="_editing.AfpNombre" Label="AFP" Variant="Variant.Outlined">
+                            @foreach (var t in _tasasAfp)
+                            { <MudSelectItem Value="@t.Nombre">@t.Nombre</MudSelectItem> }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_editing.Cuspp" Label="CUSPP" Variant="Variant.Outlined" />
+                    </MudItem>
+                }
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveTrabajador" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showCesar)
+{
+    <MudDialog Visible="_showCesar" VisibleChanged="@(v => _showCesar = v)">
+        <TitleContent><MudText Typo="Typo.h6">Cesar Trabajador</MudText></TitleContent>
+        <DialogContent>
+            <MudDatePicker @bind-Date="_fechaCese" Label="Fecha de Cese" Variant="Variant.Outlined" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCesar = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ConfirmarCese">Cesar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<TrabajadorModel> _trabajadores = new();
+    private List<TasaAfpModel> _tasasAfp = new();
+    private bool _loading = true, _saving;
+    private bool _showDialog, _showCesar;
+    private TrabajadorModel _editing = new();
+    private int _cesandoId;
+    private DateTime? _fechaNacimiento;
+    private DateTime? _fechaIngreso = DateTime.Now;
+    private DateTime? _fechaCese = DateTime.Now;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var tResult = await ApiService.GetAsync<List<TasaAfpModel>>("api/tasas-afp");
+        if (tResult?.Success == true) _tasasAfp = tResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<TrabajadorModel>>("api/trabajadores");
+        if (result?.Success == true) _trabajadores = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog()
+    {
+        _editing = new TrabajadorModel { TipoDocumento = "DNI", TipoContrato = "INDEFINIDO", RegimenPension = "ONP" };
+        _fechaNacimiento = null;
+        _fechaIngreso = DateTime.Now;
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(TrabajadorModel t)
+    {
+        _editing = new TrabajadorModel
+        {
+            Id = t.Id, TipoDocumento = t.TipoDocumento, NumeroDocumento = t.NumeroDocumento,
+            Nombres = t.Nombres, ApellidoPaterno = t.ApellidoPaterno, ApellidoMaterno = t.ApellidoMaterno,
+            Sexo = t.Sexo, Direccion = t.Direccion, Telefono = t.Telefono, Email = t.Email,
+            Cargo = t.Cargo, TipoContrato = t.TipoContrato, SueldoBasico = t.SueldoBasico,
+            TieneAsignacionFamiliar = t.TieneAsignacionFamiliar, RegimenPension = t.RegimenPension,
+            AfpNombre = t.AfpNombre, Cuspp = t.Cuspp
+        };
+        _fechaNacimiento = t.FechaNacimiento;
+        _fechaIngreso = t.FechaIngreso;
+        _showDialog = true;
+    }
+
+    private async Task SaveTrabajador()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.NumeroDocumento) || string.IsNullOrWhiteSpace(_editing.Nombres) || string.IsNullOrWhiteSpace(_editing.Cargo))
+        {
+            Snackbar.Add("Complete documento, nombres y cargo", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new
+        {
+            _editing.TipoDocumento, _editing.NumeroDocumento, _editing.Nombres, _editing.ApellidoPaterno, _editing.ApellidoMaterno,
+            FechaNacimiento = _fechaNacimiento, _editing.Sexo, _editing.Direccion, _editing.Telefono, _editing.Email,
+            _editing.Cargo, FechaIngreso = _fechaIngreso ?? DateTime.Now, _editing.TipoContrato, _editing.SueldoBasico,
+            _editing.TieneAsignacionFamiliar, _editing.RegimenPension, _editing.AfpNombre, _editing.Cuspp
+        };
+        var result = _editing.Id == 0
+            ? await ApiService.PostAsync<TrabajadorModel>("api/trabajadores", data)
+            : await ApiService.PutAsync<TrabajadorModel>($"api/trabajadores/{_editing.Id}", data);
+
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error al guardar el trabajador", Severity.Error);
+        _saving = false;
+    }
+
+    private void OpenCesarDialog(TrabajadorModel t) { _cesandoId = t.Id; _fechaCese = DateTime.Now; _showCesar = true; }
+
+    private async Task ConfirmarCese()
+    {
+        var result = await ApiService.PatchAsync<TrabajadorModel>($"api/trabajadores/{_cesandoId}/cesar", _fechaCese ?? DateTime.Now);
+        if (result?.Success == true) { Snackbar.Add("Trabajador cesado", Severity.Success); _showCesar = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo cesar el trabajador", Severity.Error);
+    }
+
+    private async Task DeleteTrabajador(TrabajadorModel t)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/trabajadores/{t.Id}");
+        if (result?.Success == true) { Snackbar.Add("Trabajador eliminado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo eliminar el trabajador", Severity.Error);
+    }
+}

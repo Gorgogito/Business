@@ -1,0 +1,191 @@
+@page "/recetas"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Recetas - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Recetas de Producción (BOM)</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("production.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="OpenCreateDialog">Nueva Receta</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="RecetaModel" Items="_recetas" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Codigo" Title="Código" />
+                <PropertyColumn Property="x => x.ProductoNombre" Title="Producto terminado" />
+                <PropertyColumn Property="x => x.Descripcion" Title="Descripción" />
+                <TemplateColumn Title="Rendimiento">
+                    <CellTemplate>@context.Item.CantidadProducida.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Insumos">
+                    <CellTemplate>@context.Item.Detalles.Count</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.Estado == "ACTIVA" ? Color.Success : Color.Default)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Info" Size="Size.Small"
+                            OnClick="@(() => OpenViewDialog(context.Item))" />
+                        @if (AppState.HasPermission("production.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                OnClick="@(() => OpenEditDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                OnClick="@(() => DeleteReceta(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showView && _viewing != null)
+{
+    <MudDialog Visible="_showView" VisibleChanged="@(v => _showView = v)">
+        <TitleContent><MudText Typo="Typo.h6">Receta @_viewing.Codigo — @_viewing.ProductoNombre</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-2">Rinde @_viewing.CantidadProducida.ToString("N2") unidades. @_viewing.Descripcion</MudText>
+            <MudTable Items="_viewing.Detalles" Dense="true" Striped="true">
+                <HeaderContent><MudTh>Insumo</MudTh><MudTh Style="text-align:right">Cantidad</MudTh></HeaderContent>
+                <RowTemplate><MudTd>@context.InsumoNombre</MudTd><MudTd Style="text-align:right">@context.Cantidad.ToString("N4")</MudTd></RowTemplate>
+            </MudTable>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showView = false)">Cerrar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nueva Receta" : "Editar Receta")</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.ProductoId" Label="Producto terminado" Variant="Variant.Outlined" Required="true">
+                        @foreach (var p in _productos)
+                        { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_editing.CantidadProducida" Label="Cantidad producida (rendimiento)" Variant="Variant.Outlined" Min="0.0001m" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Descripcion" Label="Descripción" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1">Insumos (materia prima)</MudText>
+                    @foreach (var det in _detalles)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="8">
+                                <MudSelect @bind-Value="det.InsumoId" Label="Insumo" Variant="Variant.Outlined" Dense="true">
+                                    @foreach (var p in _productos)
+                                    { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="det.Cantidad" Label="Cantidad" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.0001m" />
+                            </MudItem>
+                            <MudItem xs="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => _detalles.Remove(det))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Size="Size.Small" Class="mt-2"
+                        OnClick="@(() => _detalles.Add(new RecetaDetalleModel()))">Agregar insumo</MudButton>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveReceta" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<RecetaModel> _recetas = new();
+    private List<ProductoModel> _productos = new();
+    private bool _loading = true, _saving;
+    private bool _showDialog, _showView;
+    private RecetaModel _editing = new();
+    private RecetaModel? _viewing;
+    private List<RecetaDetalleModel> _detalles = new();
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var pResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (pResult?.Success == true) _productos = pResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<RecetaModel>>("api/recetas");
+        if (result?.Success == true) _recetas = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenViewDialog(RecetaModel r) { _viewing = r; _showView = true; }
+
+    private void OpenCreateDialog()
+    {
+        _editing = new RecetaModel { CantidadProducida = 1 };
+        _detalles = new() { new RecetaDetalleModel() };
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(RecetaModel r)
+    {
+        _editing = new RecetaModel { Id = r.Id, ProductoId = r.ProductoId, Descripcion = r.Descripcion, CantidadProducida = r.CantidadProducida };
+        _detalles = r.Detalles.Select(d => new RecetaDetalleModel { InsumoId = d.InsumoId, Cantidad = d.Cantidad }).ToList();
+        _showDialog = true;
+    }
+
+    private async Task SaveReceta()
+    {
+        if (_editing.ProductoId == 0 || _detalles.Count(d => d.InsumoId > 0 && d.Cantidad > 0) == 0)
+        {
+            Snackbar.Add("Seleccione el producto terminado y al menos un insumo con cantidad", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new
+        {
+            _editing.ProductoId, _editing.Descripcion, _editing.CantidadProducida,
+            Detalles = _detalles.Where(d => d.InsumoId > 0 && d.Cantidad > 0).Select(d => new { d.InsumoId, d.Cantidad })
+        };
+        var result = _editing.Id == 0
+            ? await ApiService.PostAsync<RecetaModel>("api/recetas", data)
+            : await ApiService.PutAsync<RecetaModel>($"api/recetas/{_editing.Id}", data);
+
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error al guardar la receta", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task DeleteReceta(RecetaModel r)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/recetas/{r.Id}");
+        if (result?.Success == true) { Snackbar.Add("Receta eliminada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo eliminar la receta", Severity.Error);
+    }
+}

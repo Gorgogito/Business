@@ -1,0 +1,106 @@
+﻿@page "/"
+@inject ApiService ApiService
+
+<PageTitle>Dashboard - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+else if (_dashboard != null)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Primary" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">@_dashboard.TotalClientes</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Clientes</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Color="Color.Secondary" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">@_dashboard.TotalProveedores</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Proveedores</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory2" Color="Color.Success" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">@_dashboard.TotalProductos</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Productos</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.PointOfSale" Color="Color.Warning" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">S/ @_dashboard.VentasMes.ToString("N2")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Ventas del Mes</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.ShoppingBag" Color="Color.Info" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">S/ @_dashboard.ComprasMes.ToString("N2")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Compras del Mes</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Error" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">@_dashboard.PedidosPendientes</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Pedidos Pendientes</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="4">
+                <MudCardContent Class="d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.Assignment" Color="Color.Tertiary" Size="Size.Large" Class="mr-3" />
+                    <div>
+                        <MudText Typo="Typo.h4">@_dashboard.OrdenesCompraPendientes</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">OC Pendientes</MudText>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private DashboardModel? _dashboard;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await ApiService.GetAsync<DashboardModel>("api/dashboard");
+        if (result?.Success == true)
+            _dashboard = result.Data;
+        _loading = false;
+    }
+}

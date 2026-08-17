@@ -1,0 +1,158 @@
+﻿@page "/pedidos"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Pedidos - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Pedidos de Venta</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("sales.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="@(() => _showCreate = true)">Nuevo Pedido</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="PedidoModel" Items="_pedidos" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <PropertyColumn Property="x => x.ClienteNombre" Title="Cliente" />
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Total">
+                    <CellTemplate>S/ @context.Item.Total.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@GetEstadoColor(context.Item.Estado)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("sales.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Color="Color.Success" Size="Size.Small"
+                                title="Entregar" OnClick="@(() => CambiarEstado(context.Item.Id, "ENTREGADO"))"
+                                Disabled="@(context.Item.Estado != "EN_PROCESO")" />
+                            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Color="Color.Info" Size="Size.Small"
+                                title="En Proceso" OnClick="@(() => CambiarEstado(context.Item.Id, "EN_PROCESO"))"
+                                Disabled="@(context.Item.Estado != "PENDIENTE")" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Cancelar" OnClick="@(() => CambiarEstado(context.Item.Id, "CANCELADO"))"
+                                Disabled="@(context.Item.Estado == "ENTREGADO" || context.Item.Estado == "CANCELADO")" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)">
+        <TitleContent><MudText Typo="Typo.h6">Nuevo Pedido</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_newClienteId" Label="Cliente" Variant="Variant.Outlined" Required="true">
+                        @foreach (var c in _clientes)
+                        { <MudSelectItem Value="@c.Id">@c.RazonSocial</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_observaciones" Label="Observaciones" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1">Productos</MudText>
+                    @foreach (var det in _detalles)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="4">
+                                <MudSelect @bind-Value="det.ProductoId" Label="Producto" Variant="Variant.Outlined" Dense="true">
+                                    @foreach (var p in _productos)
+                                    { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudNumericField @bind-Value="det.Cantidad" Label="Cant." Variant="Variant.Outlined" Margin="Margin.Dense" Min="1m" />
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="det.PrecioUnitario" Label="Precio" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudNumericField @bind-Value="det.Descuento" Label="Desc." Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => _detalles.Remove(det))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Size="Size.Small" Class="mt-2" OnClick="@(() => _detalles.Add(new PedidoDetalleModel { Cantidad = 1 }))">Agregar</MudButton>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePedido" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<PedidoModel> _pedidos = new();
+    private List<ClienteModel> _clientes = new();
+    private List<ProductoModel> _productos = new();
+    private bool _loading, _saving, _showCreate;
+    private int _newClienteId;
+    private string _observaciones = string.Empty;
+    private List<PedidoDetalleModel> _detalles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cResult = await ApiService.GetAsync<List<ClienteModel>>("api/clientes");
+        if (cResult?.Success == true) _clientes = cResult.Data ?? new();
+        var pResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (pResult?.Success == true) _productos = pResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<PedidoModel>>("api/pedidos");
+        if (result?.Success == true) _pedidos = result.Data ?? new();
+        _loading = false;
+    }
+
+    private Color GetEstadoColor(string estado) => estado switch
+    {
+        "ENTREGADO" => Color.Success, "CANCELADO" => Color.Error,
+        "EN_PROCESO" => Color.Info, _ => Color.Warning
+    };
+
+    private async Task SavePedido()
+    {
+        if (_newClienteId == 0 || !_detalles.Any()) { Snackbar.Add("Complete cliente y al menos un producto", Severity.Warning); return; }
+        _saving = true;
+        var data = new { ClienteId = _newClienteId, Observaciones = _observaciones, Detalles = _detalles.Select(d => new { d.ProductoId, d.Cantidad, d.PrecioUnitario, d.Descuento }) };
+        var result = await ApiService.PostAsync<PedidoModel>("api/pedidos", data);
+        if (result?.Success == true) { Snackbar.Add("Pedido creado", Severity.Success); _showCreate = false; _detalles.Clear(); _newClienteId = 0; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task CambiarEstado(int id, string estado)
+    {
+        var result = await ApiService.PatchAsync<PedidoModel>($"api/pedidos/{id}/estado", estado);
+        if (result?.Success == true) { Snackbar.Add("Estado actualizado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

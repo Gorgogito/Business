@@ -1,0 +1,138 @@
+﻿@page "/movimientos"
+@inject ApiService ApiService
+@inject ISnackbar Snackbar
+
+<PageTitle>Movimientos - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Movimientos de Inventario</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Historial de Movimientos</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudDataGrid T="MovimientoInventarioModel" Items="_movimientos" Loading="_loading"
+                    Filterable="true" Hover="true" Striped="true" Dense="true">
+                    <Columns>
+                        <TemplateColumn Title="Tipo">
+                            <CellTemplate>
+                                <MudChip T="string" Size="Size.Small"
+                                    Color="@(context.Item.Tipo == "ENTRADA" ? Color.Success : Color.Error)">
+                                    @context.Item.Tipo
+                                </MudChip>
+                            </CellTemplate>
+                        </TemplateColumn>
+                        <PropertyColumn Property="x => x.ProductoNombre" Title="Producto" />
+                        <PropertyColumn Property="x => x.AlmacenNombre" Title="Almacén" />
+                        <PropertyColumn Property="x => x.Cantidad" Title="Cantidad" Format="N2" />
+                        <PropertyColumn Property="x => x.PrecioUnitario" Title="Precio Unit." Format="N2" />
+                        <PropertyColumn Property="x => x.Referencia" Title="Referencia" />
+                        <TemplateColumn Title="Fecha">
+                            <CellTemplate>@context.Item.FechaMovimiento.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</CellTemplate>
+                        </TemplateColumn>
+                    </Columns>
+                </MudDataGrid>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Registrar Movimiento</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="_nuevo.Tipo" Label="Tipo" Variant="Variant.Outlined" Required="true">
+                            <MudSelectItem Value="@("ENTRADA")">ENTRADA</MudSelectItem>
+                            <MudSelectItem Value="@("SALIDA")">SALIDA</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="_nuevo.ProductoId" Label="Producto" Variant="Variant.Outlined" Required="true">
+                            @foreach (var p in _productos)
+                            {
+                                <MudSelectItem Value="@p.Id">@p.Nombre (@p.Codigo)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="_nuevo.AlmacenId" Label="Almacén" Variant="Variant.Outlined" Required="true">
+                            @foreach (var a in _almacenes)
+                            {
+                                <MudSelectItem Value="@a.Id">@a.Nombre</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_nuevo.Cantidad" Label="Cantidad" Variant="Variant.Outlined" Min="0.01m" Format="N2" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_nuevo.PrecioUnitario" Label="Precio Unit." Variant="Variant.Outlined" Min="0m" Format="N2" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_nuevo.Referencia" Label="Referencia" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_nuevo.Observacion" Label="Observación" Variant="Variant.Outlined" Lines="2" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                            StartIcon="@Icons.Material.Filled.Save" OnClick="RegistrarMovimiento" Disabled="_saving">
+                            @if (_saving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                            Registrar
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<MovimientoInventarioModel> _movimientos = new();
+    private List<ProductoModel> _productos = new();
+    private List<AlmacenModel> _almacenes = new();
+    private bool _loading = true;
+    private bool _saving;
+    private MovimientoInventarioModel _nuevo = new() { Tipo = "ENTRADA" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var pResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (pResult?.Success == true) _productos = pResult.Data ?? new();
+        var aResult = await ApiService.GetAsync<List<AlmacenModel>>("api/almacenes");
+        if (aResult?.Success == true) _almacenes = aResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<MovimientoInventarioModel>>("api/stock/movimientos");
+        if (result?.Success == true) _movimientos = result.Data ?? new();
+        _loading = false;
+    }
+
+    private async Task RegistrarMovimiento()
+    {
+        if (_nuevo.ProductoId == 0 || _nuevo.AlmacenId == 0 || _nuevo.Cantidad <= 0) {
+            Snackbar.Add("Complete todos los campos requeridos", Severity.Warning); return;
+        }
+        _saving = true;
+        var data = new { _nuevo.Tipo, _nuevo.ProductoId, _nuevo.AlmacenId, _nuevo.Cantidad, _nuevo.PrecioUnitario, _nuevo.Referencia, _nuevo.Observacion };
+        var result = await ApiService.PostAsync<MovimientoInventarioModel>("api/stock/movimientos", data);
+        if (result?.Success == true) {
+            Snackbar.Add("Movimiento registrado exitosamente", Severity.Success);
+            _nuevo = new MovimientoInventarioModel { Tipo = "ENTRADA" };
+            await LoadData();
+        } else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+        _saving = false;
+    }
+}

@@ -1,0 +1,121 @@
+﻿@page "/empresas"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Empresas - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Empresas</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("config.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nueva Empresa</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="EmpresaModel" Items="_empresas" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.RazonSocial" Title="Razón Social" />
+                <PropertyColumn Property="x => x.RUC" Title="RUC" />
+                <PropertyColumn Property="x => x.Telefono" Title="Teléfono" />
+                <PropertyColumn Property="x => x.Email" Title="Email" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small"
+                            Color="@(context.Item.IsActive ? Color.Success : Color.Error)">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nueva Empresa" : "Editar Empresa")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.RazonSocial" Label="Razón Social" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.RUC" Label="RUC" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Telefono" Label="Teléfono" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Direccion" Label="Dirección" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Email" Label="Email" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveEmpresa">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<EmpresaModel> _empresas = new();
+    private bool _loading = true;
+    private bool _showDialog;
+    private EmpresaModel _editing = new();
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<EmpresaModel>>("api/empresas");
+        if (result?.Success == true) _empresas = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog() { _editing = new EmpresaModel(); _showDialog = true; }
+
+    private void OpenEditDialog(EmpresaModel e)
+    {
+        _editing = new EmpresaModel { Id = e.Id, RazonSocial = e.RazonSocial, RUC = e.RUC,
+            Direccion = e.Direccion, Telefono = e.Telefono, Email = e.Email };
+        _showDialog = true;
+    }
+
+    private async Task SaveEmpresa()
+    {
+        var data = new { _editing.RazonSocial, _editing.RUC, _editing.Direccion, _editing.Telefono, _editing.Email };
+        ApiResponse<EmpresaModel>? result;
+        if (_editing.Id == 0)
+            result = await ApiService.PostAsync<EmpresaModel>("api/empresas", data);
+        else
+            result = await ApiService.PutAsync<EmpresaModel>($"api/empresas/{_editing.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

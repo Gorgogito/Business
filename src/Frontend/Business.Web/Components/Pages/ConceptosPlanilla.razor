@@ -1,0 +1,187 @@
+@page "/conceptos-planilla"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Conceptos de Planilla - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Conceptos de Planilla</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("hr.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="OpenCreateDialog">Nuevo Concepto</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="ConceptoPlanillaModel" Items="_conceptos" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Codigo" Title="Código" />
+                <PropertyColumn Property="x => x.Nombre" Title="Nombre" />
+                <PropertyColumn Property="x => x.Tipo" Title="Tipo" />
+                <PropertyColumn Property="x => x.MetodoCalculo" Title="Método" />
+                <TemplateColumn Title="Valor">
+                    <CellTemplate>
+                        @(context.Item.MetodoCalculo == "PORCENTUAL" ? $"{(context.Item.Porcentaje ?? 0) * 100:N2}%"
+                            : context.Item.MetodoCalculo == "FIJO" ? $"S/ {(context.Item.MontoFijo ?? 0):N2}" : "—")
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Afecta">
+                    <CellTemplate>
+                        @(context.Item.AfectaAfp ? "AFP/ONP " : "")@(context.Item.AfectaEssalud ? "EsSalud" : "")
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Origen">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.EsSistema ? Color.Info : Color.Default)">
+                            @(context.Item.EsSistema ? "Sistema" : "Personalizado")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("hr.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                OnClick="@(() => OpenEditDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                Disabled="@context.Item.EsSistema" title="@(context.Item.EsSistema ? "Los conceptos del sistema no se eliminan" : "Eliminar")"
+                                OnClick="@(() => DeleteConcepto(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent><MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nuevo Concepto" : "Editar Concepto")</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Codigo" Label="Código" Variant="Variant.Outlined" Required="true" Disabled="_editing.EsSistema" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.Tipo" Label="Tipo" Variant="Variant.Outlined" Disabled="_editing.EsSistema">
+                        <MudSelectItem Value="@("INGRESO")">Ingreso</MudSelectItem>
+                        <MudSelectItem Value="@("DESCUENTO")">Descuento</MudSelectItem>
+                        <MudSelectItem Value="@("APORTE")">Aporte (empleador)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Nombre" Label="Nombre" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.MetodoCalculo" Label="Método de Cálculo" Variant="Variant.Outlined" Disabled="_editing.EsSistema">
+                        <MudSelectItem Value="@("FIJO")">Monto Fijo</MudSelectItem>
+                        <MudSelectItem Value="@("PORCENTUAL")">Porcentual</MudSelectItem>
+                        <MudSelectItem Value="@("MANUAL")">Manual (se ingresa al procesar)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_orden" Label="Orden" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+                @if (_editing.MetodoCalculo == "PORCENTUAL")
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_porcentajeInput" Label="Porcentaje (%)" Variant="Variant.Outlined" Min="0m" Step="0.01m" />
+                    </MudItem>
+                }
+                else if (_editing.MetodoCalculo == "FIJO")
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_editing.MontoFijo" Label="Monto Fijo" Variant="Variant.Outlined" Min="0m" />
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6">
+                    <MudSwitch @bind-Value="_editing.AfectaAfp" Color="Color.Primary" Label="Afecta base AFP/ONP" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSwitch @bind-Value="_editing.AfectaEssalud" Color="Color.Primary" Label="Afecta base EsSalud" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveConcepto" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<ConceptoPlanillaModel> _conceptos = new();
+    private bool _loading = true, _saving;
+    private bool _showDialog;
+    private ConceptoPlanillaModel _editing = new();
+    private int _orden;
+    private decimal _porcentajeInput;
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<ConceptoPlanillaModel>>("api/conceptos-planilla");
+        if (result?.Success == true) _conceptos = (result.Data ?? new()).OrderBy(c => c.Orden).ToList();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog()
+    {
+        _editing = new ConceptoPlanillaModel { Tipo = "INGRESO", MetodoCalculo = "MANUAL" };
+        _orden = _conceptos.Count > 0 ? _conceptos.Max(c => c.Orden) + 1 : 1;
+        _porcentajeInput = 0;
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(ConceptoPlanillaModel c)
+    {
+        _editing = new ConceptoPlanillaModel
+        {
+            Id = c.Id, Codigo = c.Codigo, Nombre = c.Nombre, Tipo = c.Tipo, MetodoCalculo = c.MetodoCalculo,
+            Porcentaje = c.Porcentaje, MontoFijo = c.MontoFijo, AfectaAfp = c.AfectaAfp, AfectaEssalud = c.AfectaEssalud, EsSistema = c.EsSistema
+        };
+        _orden = c.Orden;
+        _porcentajeInput = (c.Porcentaje ?? 0) * 100;
+        _showDialog = true;
+    }
+
+    private async Task SaveConcepto()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Codigo) || string.IsNullOrWhiteSpace(_editing.Nombre))
+        {
+            Snackbar.Add("Complete código y nombre", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new
+        {
+            _editing.Codigo, _editing.Nombre, _editing.Tipo, _editing.MetodoCalculo,
+            Porcentaje = _editing.MetodoCalculo == "PORCENTUAL" ? (decimal?)(_porcentajeInput / 100m) : null,
+            MontoFijo = _editing.MetodoCalculo == "FIJO" ? _editing.MontoFijo : null,
+            _editing.AfectaAfp, _editing.AfectaEssalud, Orden = _orden
+        };
+        var result = _editing.Id == 0
+            ? await ApiService.PostAsync<ConceptoPlanillaModel>("api/conceptos-planilla", data)
+            : await ApiService.PutAsync<ConceptoPlanillaModel>($"api/conceptos-planilla/{_editing.Id}", data);
+
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error al guardar el concepto", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task DeleteConcepto(ConceptoPlanillaModel c)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/conceptos-planilla/{c.Id}");
+        if (result?.Success == true) { Snackbar.Add("Concepto eliminado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo eliminar el concepto", Severity.Error);
+    }
+}

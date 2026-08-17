@@ -1,0 +1,108 @@
+@page "/configuracion-contable"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Configuración de Cuentas - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Configuración de Cuentas por Concepto</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Define qué cuenta del plan contable usa cada asiento automático (ventas, compras, cobranza, pago, planilla, producción).
+    Un concepto sin personalizar usa su cuenta por defecto del PCGE.
+</MudText>
+
+<MudTable Items="_items" Dense="true" Striped="true" Hover="true" Loading="_loading" GroupBy="_groupDefinition">
+    <HeaderContent>
+        <MudTh>Concepto</MudTh>
+        <MudTh>Descripción</MudTh>
+        <MudTh>Cuenta actual</MudTh>
+        <MudTh>Estado</MudTh>
+        <MudTh>Acciones</MudTh>
+    </HeaderContent>
+    <GroupHeaderTemplate>
+        <MudTh Class="mud-table-cell-custom-group" colspan="5">@context.Key</MudTh>
+    </GroupHeaderTemplate>
+    <RowTemplate>
+        <MudTd>@context.Concepto</MudTd>
+        <MudTd>@context.Descripcion</MudTd>
+        <MudTd>@(context.CuentaCodigo != null ? $"{context.CuentaCodigo} - {context.CuentaNombre}" : "(sin cuenta configurada)")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.EsPersonalizado ? Color.Primary : Color.Default)">
+                @(context.EsPersonalizado ? "Personalizada" : "Por defecto")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            @if (AppState.HasPermission("accounting.manage"))
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@if (_showDialog && _editing != null)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent><MudText Typo="Typo.h6">Reconfigurar cuenta: @_editing.Concepto</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-3">@_editing.Descripcion</MudText>
+            <MudSelect @bind-Value="_nuevaCuentaId" Label="Cuenta" Variant="Variant.Outlined">
+                @foreach (var c in _cuentasMovimiento)
+                { <MudSelectItem Value="@c.Id">@c.Codigo - @c.Nombre</MudSelectItem> }
+            </MudSelect>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveConfiguracion" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<ConfiguracionCuentaContableModel> _items = new();
+    private List<CuentaContableModel> _cuentasMovimiento = new();
+    private bool _loading = true, _saving, _showDialog;
+    private ConfiguracionCuentaContableModel? _editing;
+    private int _nuevaCuentaId;
+
+    private readonly TableGroupDefinition<ConfiguracionCuentaContableModel> _groupDefinition = new()
+    {
+        GroupName = "Módulo",
+        Indentation = false,
+        Expandable = false,
+        Selector = x => x.Modulo
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cResult = await ApiService.GetAsync<List<CuentaContableModel>>("api/cuentas-contables");
+        if (cResult?.Success == true) _cuentasMovimiento = (cResult.Data ?? new()).Where(c => c.EsMovimiento).OrderBy(c => c.Codigo).ToList();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<ConfiguracionCuentaContableModel>>("api/configuracion-contable");
+        if (result?.Success == true) _items = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenEditDialog(ConfiguracionCuentaContableModel item)
+    {
+        _editing = item;
+        _nuevaCuentaId = item.CuentaContableId ?? 0;
+        _showDialog = true;
+    }
+
+    private async Task SaveConfiguracion()
+    {
+        if (_editing == null || _nuevaCuentaId == 0) return;
+        _saving = true;
+        var result = await ApiService.PutAsync<ConfiguracionCuentaContableModel>(
+            $"api/configuracion-contable/{_editing.Concepto}", new { CuentaContableId = _nuevaCuentaId });
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error al configurar la cuenta", Severity.Error);
+        _saving = false;
+    }
+}

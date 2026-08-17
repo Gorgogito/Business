@@ -1,0 +1,142 @@
+@page "/plan-cuentas"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Plan de Cuentas - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Plan de Cuentas (PCGE)</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("accounting.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="OpenCreateDialog">Nueva Cuenta</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="CuentaContableModel" Items="_cuentas" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Codigo" Title="Código" />
+                <PropertyColumn Property="x => x.Nombre" Title="Nombre" />
+                <PropertyColumn Property="x => x.Clase" Title="Clase" />
+                <PropertyColumn Property="x => x.Naturaleza" Title="Naturaleza" />
+                <PropertyColumn Property="x => x.Nivel" Title="Nivel" />
+                <TemplateColumn Title="Tipo">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.EsMovimiento ? Color.Success : Color.Default)">
+                            @(context.Item.EsMovimiento ? "Movimiento" : "Agrupación")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("accounting.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                OnClick="@(() => OpenEditDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                OnClick="@(() => DeleteCuenta(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nueva Cuenta" : "Editar Cuenta")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Codigo" Label="Código" Variant="Variant.Outlined" Required="true"
+                        HelperText="Jerárquico: 2 dígitos = grupo, 3+ = cuenta de detalle" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.Clase" Label="Clase" Variant="Variant.Outlined" Required="true">
+                        <MudSelectItem Value="@("ACTIVO")">ACTIVO</MudSelectItem>
+                        <MudSelectItem Value="@("PASIVO")">PASIVO</MudSelectItem>
+                        <MudSelectItem Value="@("PATRIMONIO")">PATRIMONIO</MudSelectItem>
+                        <MudSelectItem Value="@("INGRESO")">INGRESO</MudSelectItem>
+                        <MudSelectItem Value="@("GASTO")">GASTO</MudSelectItem>
+                        <MudSelectItem Value="@("COSTO")">COSTO</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Nombre" Label="Nombre" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="_editing.EsMovimiento" Color="Color.Primary" Label="Admite movimientos (cuenta de detalle)" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCuenta" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<CuentaContableModel> _cuentas = new();
+    private bool _loading = true, _saving;
+    private bool _showDialog;
+    private CuentaContableModel _editing = new();
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<CuentaContableModel>>("api/cuentas-contables");
+        if (result?.Success == true) _cuentas = (result.Data ?? new()).OrderBy(c => c.Codigo).ToList();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog() { _editing = new CuentaContableModel { EsMovimiento = true, Clase = "ACTIVO" }; _showDialog = true; }
+
+    private void OpenEditDialog(CuentaContableModel c)
+    {
+        _editing = new CuentaContableModel { Id = c.Id, Codigo = c.Codigo, Nombre = c.Nombre, Clase = c.Clase, EsMovimiento = c.EsMovimiento };
+        _showDialog = true;
+    }
+
+    private async Task SaveCuenta()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Codigo) || string.IsNullOrWhiteSpace(_editing.Nombre))
+        {
+            Snackbar.Add("Complete código y nombre", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new { _editing.Codigo, _editing.Nombre, _editing.Clase, _editing.EsMovimiento };
+        var result = _editing.Id == 0
+            ? await ApiService.PostAsync<CuentaContableModel>("api/cuentas-contables", data)
+            : await ApiService.PutAsync<CuentaContableModel>($"api/cuentas-contables/{_editing.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else Snackbar.Add(result?.Message ?? "Error al guardar la cuenta", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task DeleteCuenta(CuentaContableModel c)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/cuentas-contables/{c.Id}");
+        if (result?.Success == true) { Snackbar.Add("Cuenta eliminada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo eliminar la cuenta", Severity.Error);
+    }
+}

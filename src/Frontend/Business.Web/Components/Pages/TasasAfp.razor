@@ -1,0 +1,143 @@
+@page "/tasas-afp"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Tasas AFP - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Tasas AFP</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Tasas reales por administradora. Si el trabajador tiene una AFP registrada aquí, la planilla usa estos porcentajes
+    en vez del genérico del catálogo de conceptos.
+</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("hr.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="OpenCreateDialog">Nueva AFP</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="TasaAfpModel" Items="_tasas" Loading="_loading" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Nombre" Title="AFP" />
+                <TemplateColumn Title="Aporte al fondo">
+                    <CellTemplate>@((context.Item.AporteFondo * 100).ToString("N2"))%</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Comisión sobre flujo">
+                    <CellTemplate>@((context.Item.ComisionFlujo * 100).ToString("N2"))%</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Prima de seguro">
+                    <CellTemplate>@((context.Item.PrimaSeguro * 100).ToString("N2"))%</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("hr.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                OnClick="@(() => OpenEditDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                OnClick="@(() => DeleteTasa(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent><MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nueva AFP" : "Editar AFP")</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Nombre" Label="Nombre de la AFP" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_aporteFondoInput" Label="Aporte al fondo (%)" Variant="Variant.Outlined" Min="0m" Step="0.01m" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_comisionInput" Label="Comisión (%)" Variant="Variant.Outlined" Min="0m" Step="0.01m" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_primaInput" Label="Prima de seguro (%)" Variant="Variant.Outlined" Min="0m" Step="0.01m" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveTasa" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<TasaAfpModel> _tasas = new();
+    private bool _loading = true, _saving;
+    private bool _showDialog;
+    private TasaAfpModel _editing = new();
+    private decimal _aporteFondoInput = 10, _comisionInput, _primaInput;
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<TasaAfpModel>>("api/tasas-afp");
+        if (result?.Success == true) _tasas = (result.Data ?? new()).OrderBy(t => t.Nombre).ToList();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog()
+    {
+        _editing = new TasaAfpModel();
+        _aporteFondoInput = 10; _comisionInput = 0; _primaInput = 0;
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(TasaAfpModel t)
+    {
+        _editing = new TasaAfpModel { Id = t.Id, Nombre = t.Nombre, AporteFondo = t.AporteFondo, ComisionFlujo = t.ComisionFlujo, PrimaSeguro = t.PrimaSeguro };
+        _aporteFondoInput = t.AporteFondo * 100;
+        _comisionInput = t.ComisionFlujo * 100;
+        _primaInput = t.PrimaSeguro * 100;
+        _showDialog = true;
+    }
+
+    private async Task SaveTasa()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Nombre))
+        {
+            Snackbar.Add("Ingrese el nombre de la AFP", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new
+        {
+            _editing.Nombre,
+            AporteFondo = _aporteFondoInput / 100m,
+            ComisionFlujo = _comisionInput / 100m,
+            PrimaSeguro = _primaInput / 100m
+        };
+        var result = _editing.Id == 0
+            ? await ApiService.PostAsync<TasaAfpModel>("api/tasas-afp", data)
+            : await ApiService.PutAsync<TasaAfpModel>($"api/tasas-afp/{_editing.Id}", data);
+
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error al guardar la AFP", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task DeleteTasa(TasaAfpModel t)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/tasas-afp/{t.Id}");
+        if (result?.Success == true) { Snackbar.Add("AFP eliminada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo eliminar la AFP", Severity.Error);
+    }
+}

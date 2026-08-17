@@ -1,0 +1,193 @@
+﻿@page "/usuarios"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Usuarios - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Usuarios</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudTextField @bind-Value="_search" Label="Buscar" Variant="Variant.Outlined"
+                AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Immediate="true" />
+        </CardHeaderContent>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("security.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                    OnClick="OpenCreateDialog">Nuevo Usuario</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="UserModel" Items="_usuarios.Where(Filter)" Loading="_loading"
+            Filterable="false" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Username" Title="Usuario" />
+                <PropertyColumn Property="x => x.FirstName" Title="Nombre" />
+                <PropertyColumn Property="x => x.LastName" Title="Apellido" />
+                <PropertyColumn Property="x => x.Email" Title="Email" />
+                <PropertyColumn Property="x => x.RoleName" Title="Rol" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small"
+                            Color="@(context.Item.IsActive ? Color.Success : Color.Error)">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("security.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteUsuario(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nuevo Usuario" : "Editar Usuario")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Username" Label="Usuario" Variant="Variant.Outlined"
+                        Required="true" Disabled="@(_editing.Id != 0)" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Email" Label="Email" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.FirstName" Label="Nombre" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.LastName" Label="Apellido" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                @if (_editing.Id == 0)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_password" Label="Contraseña" Variant="Variant.Outlined"
+                            InputType="InputType.Password" Required="true" />
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.RoleId" Label="Rol" Variant="Variant.Outlined">
+                        <MudSelectItem T="int?" Value="null">-- Sin Rol --</MudSelectItem>
+                        @foreach (var rol in _roles)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)rol.Id)">@rol.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                @if (_editing.Id != 0)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudSwitch @bind-Value="_editing.IsActive" Label="Activo" Color="Color.Primary" />
+                    </MudItem>
+                }
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveUsuario">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<UserModel> _usuarios = new();
+    private List<RoleModel> _roles = new();
+    private bool _loading = true;
+    private string _search = string.Empty;
+    private bool _showDialog;
+    private UserModel _editing = new();
+    private string _password = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rolesResult = await ApiService.GetAsync<List<RoleModel>>("api/roles");
+        if (rolesResult?.Success == true) _roles = rolesResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<UserModel>>("api/users");
+        if (result?.Success == true) _usuarios = result.Data ?? new();
+        _loading = false;
+    }
+
+    private bool Filter(UserModel u) =>
+        string.IsNullOrWhiteSpace(_search) ||
+        u.Username.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        u.Email.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        u.FirstName.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private void OpenCreateDialog()
+    {
+        _editing = new UserModel { IsActive = true };
+        _password = string.Empty;
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(UserModel u)
+    {
+        _editing = new UserModel
+        {
+            Id = u.Id, Username = u.Username, Email = u.Email,
+            FirstName = u.FirstName, LastName = u.LastName,
+            RoleId = u.RoleId, IsActive = u.IsActive
+        };
+        _showDialog = true;
+    }
+
+    private async Task SaveUsuario()
+    {
+        object data;
+        ApiResponse<UserModel>? result;
+
+        if (_editing.Id == 0)
+        {
+            data = new { _editing.Username, _editing.Email, Password = _password,
+                _editing.FirstName, _editing.LastName, _editing.RoleId };
+            result = await ApiService.PostAsync<UserModel>("api/users", data);
+        }
+        else
+        {
+            data = new { _editing.Email, _editing.FirstName, _editing.LastName,
+                _editing.RoleId, _editing.IsActive };
+            result = await ApiService.PutAsync<UserModel>($"api/users/{_editing.Id}", data);
+        }
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else
+        {
+            Snackbar.Add(result?.Message ?? "Error al guardar", Severity.Error);
+        }
+    }
+
+    private async Task DeleteUsuario(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/users/{id}");
+        if (result?.Success == true) { Snackbar.Add("Usuario eliminado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

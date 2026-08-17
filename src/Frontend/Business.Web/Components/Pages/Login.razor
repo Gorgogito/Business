@@ -1,0 +1,129 @@
+﻿@page "/login"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Iniciar Sesión - Business ERP</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center justify-center" Style="height: 100vh;">
+    <MudCard Elevation="8" Style="width: 400px;">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h4" Align="Align.Center" Color="Color.Primary">Business ERP</MudText>
+                <MudText Typo="Typo.subtitle1" Align="Align.Center" Class="mt-2">Sistema de Gestión Empresarial</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+            }
+            <MudForm @ref="_form" @bind-IsValid="_isValid">
+                <MudTextField @bind-Value="_loginRequest.Username"
+                    Label="Usuario"
+                    Variant="Variant.Outlined"
+                    AdornmentIcon="@Icons.Material.Filled.Person"
+                    Adornment="Adornment.Start"
+                    Required="true"
+                    RequiredError="El usuario es requerido"
+                    Class="mb-4" />
+                <MudTextField @bind-Value="_loginRequest.Password"
+                    Label="Contraseña"
+                    Variant="Variant.Outlined"
+                    InputType="@_passwordInputType"
+                    AdornmentIcon="@_passwordIcon"
+                    Adornment="Adornment.End"
+                    OnAdornmentClick="TogglePasswordVisibility"
+                    Required="true"
+                    RequiredError="La contraseña es requerida"
+                    Class="mb-4" />
+            </MudForm>
+        </MudCardContent>
+        <MudCardActions Class="px-4 pb-4">
+            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                Size="Size.Large" OnClick="HandleLogin" Disabled="_isLoading">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Iniciar Sesión
+            </MudButton>
+        </MudCardActions>
+        <MudCardContent>
+            <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                Usuario: admin | Contraseña: Admin123!
+            </MudText>
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private MudForm _form = null!;
+    private LoginRequest _loginRequest = new();
+    private bool _isValid;
+    private bool _isLoading;
+    private string _errorMessage = string.Empty;
+    private InputType _passwordInputType = InputType.Password;
+    private string _passwordIcon = Icons.Material.Filled.VisibilityOff;
+
+    protected override void OnInitialized()
+    {
+        if (AppState.IsAuthenticated)
+            Navigation.NavigateTo("/");
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        if (_passwordInputType == InputType.Password)
+        {
+            _passwordInputType = InputType.Text;
+            _passwordIcon = Icons.Material.Filled.Visibility;
+        }
+        else
+        {
+            _passwordInputType = InputType.Password;
+            _passwordIcon = Icons.Material.Filled.VisibilityOff;
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        await _form.ValidateAsync();
+        if (!_isValid) return;
+
+        _isLoading = true;
+        _errorMessage = string.Empty;
+
+        try
+        {
+            var result = await ApiService.LoginAsync(_loginRequest);
+            if (result?.Success == true && result.Data != null)
+            {
+                var session = new UserSession
+                {
+                    Token = result.Data.Token,
+                    RefreshToken = result.Data.RefreshToken,
+                    Username = result.Data.Username,
+                    FullName = result.Data.FullName,
+                    RoleName = result.Data.RoleName,
+                    Menus = result.Data.Menus,
+                    Permissions = result.Data.Permissions
+                };
+                AppState.SetUser(session);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                _errorMessage = result?.Message ?? "Error al iniciar sesión";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error de conexión: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

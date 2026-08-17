@@ -1,0 +1,170 @@
+@page "/beneficios-sociales"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Beneficios Sociales - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Beneficios Sociales</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("hr.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Calculate"
+                    OnClick="OpenCalcularDialog">Calcular Beneficio</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="BeneficioSocialModel" Items="_beneficios" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.TrabajadorNombre" Title="Trabajador" />
+                <PropertyColumn Property="x => x.Tipo" Title="Tipo" />
+                <PropertyColumn Property="x => x.Periodo" Title="Período" />
+                <TemplateColumn Title="Fecha cálculo">
+                    <CellTemplate>@context.Item.FechaCalculo.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Rem. computable">
+                    <CellTemplate>S/ @context.Item.RemuneracionComputable.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Meses">
+                    <CellTemplate>@context.Item.MesesComputables.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Monto">
+                    <CellTemplate>S/ @context.Item.Monto.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Bonif. extra">
+                    <CellTemplate>@(context.Item.BonificacionExtraordinaria > 0 ? $"S/ {context.Item.BonificacionExtraordinaria:N2}" : "")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Total a pagar">
+                    <CellTemplate><b>S/ @context.Item.TotalPagar.ToString("N2")</b></CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.EstadoPago == "PAGADO" ? Color.Success : Color.Warning)">
+                            @context.Item.EstadoPago
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("hr.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Payments" Color="Color.Success" Size="Size.Small"
+                                title="Registrar pago" Disabled="@(context.Item.EstadoPago == "PAGADO")"
+                                OnClick="@(() => OpenPagarDialog(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent><MudText Typo="Typo.h6">Calcular Beneficio Social</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect @bind-Value="_tipo" Label="Beneficio" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("CTS")">CTS — Compensación por Tiempo de Servicios</MudSelectItem>
+                        <MudSelectItem Value="@("GRATIFICACION")">Gratificación (Fiestas Patrias / Navidad)</MudSelectItem>
+                        <MudSelectItem Value="@("VACACIONES")">Remuneración Vacacional</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="@(_tipo == "VACACIONES" ? 12 : 6)">
+                    <MudNumericField @bind-Value="_anio" Label="Año" Variant="Variant.Outlined" Min="2020" Max="2100" />
+                </MudItem>
+                @if (_tipo != "VACACIONES")
+                {
+                    <MudItem xs="6">
+                        <MudSelect @bind-Value="_semestre" Label="Semestre" Variant="Variant.Outlined">
+                            <MudSelectItem Value="1">1 — @(_tipo == "CTS" ? "mayo a octubre" : "enero a junio (Fiestas Patrias)")</MudSelectItem>
+                            <MudSelectItem Value="2">2 — @(_tipo == "CTS" ? "noviembre a abril" : "julio a diciembre (Navidad)")</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                }
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Calcular" Disabled="_saving">Calcular</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showPagar && _pagando != null)
+{
+    <MudDialog Visible="_showPagar" VisibleChanged="@(v => _showPagar = v)">
+        <TitleContent><MudText Typo="Typo.h6">Registrar Pago</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-3">
+                @_pagando.TrabajadorNombre — @_pagando.Tipo @_pagando.Periodo — Total: <b>S/ @_pagando.TotalPagar.ToString("N2")</b>
+            </MudText>
+            <MudSelect @bind-Value="_medioPago" Label="Medio de pago" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("EFECTIVO")">Efectivo</MudSelectItem>
+                <MudSelectItem Value="@("TRANSFERENCIA")">Transferencia bancaria</MudSelectItem>
+            </MudSelect>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showPagar = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmarPago" Disabled="_saving">Pagar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<BeneficioSocialModel> _beneficios = new();
+    private bool _loading = true, _saving;
+    private bool _showDialog;
+    private string _tipo = "CTS";
+    private int _anio = DateTime.Now.Year;
+    private int _semestre = 1;
+    private bool _showPagar;
+    private BeneficioSocialModel? _pagando;
+    private string _medioPago = "EFECTIVO";
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<BeneficioSocialModel>>("api/beneficios-sociales");
+        if (result?.Success == true) _beneficios = (result.Data ?? new()).OrderByDescending(b => b.FechaCalculo).ToList();
+        _loading = false;
+    }
+
+    private void OpenCalcularDialog() { _tipo = "CTS"; _anio = DateTime.Now.Year; _semestre = 1; _showDialog = true; }
+
+    private async Task Calcular()
+    {
+        _saving = true;
+        var endpoint = _tipo switch
+        {
+            "CTS" => $"api/beneficios-sociales/cts?anio={_anio}&semestre={_semestre}",
+            "GRATIFICACION" => $"api/beneficios-sociales/gratificacion?anio={_anio}&semestre={_semestre}",
+            _ => $"api/beneficios-sociales/vacaciones?anio={_anio}"
+        };
+        var result = await ApiService.PostAsync<List<BeneficioSocialModel>>(endpoint, new { });
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showDialog = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo calcular el beneficio", Severity.Error);
+        _saving = false;
+    }
+
+    private void OpenPagarDialog(BeneficioSocialModel b) { _pagando = b; _medioPago = "EFECTIVO"; _showPagar = true; }
+
+    private async Task ConfirmarPago()
+    {
+        if (_pagando == null) return;
+        _saving = true;
+        var result = await ApiService.PatchAsync<BeneficioSocialModel>($"api/beneficios-sociales/{_pagando.Id}/pagar", new { MedioPago = _medioPago });
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showPagar = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo registrar el pago", Severity.Error);
+        _saving = false;
+    }
+}

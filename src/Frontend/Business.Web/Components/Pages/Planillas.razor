@@ -1,0 +1,164 @@
+@page "/planillas"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Planillas - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Planillas</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("hr.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                    OnClick="OpenProcesarDialog">Procesar Planilla</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="PlanillaModel" Items="_planillas" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <TemplateColumn Title="Período">
+                    <CellTemplate>@($"{context.Item.Mes:00}/{context.Item.Anio}")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Fecha proceso">
+                    <CellTemplate>@context.Item.FechaProceso.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Ingresos">
+                    <CellTemplate>S/ @context.Item.TotalIngresos.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Descuentos">
+                    <CellTemplate>S/ @context.Item.TotalDescuentos.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Neto a pagar">
+                    <CellTemplate><b>S/ @context.Item.TotalNeto.ToString("N2")</b></CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.Estado == "ANULADA" ? Color.Error : Color.Success)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Info" Size="Size.Small"
+                            OnClick="@(() => OpenViewDialog(context.Item))" />
+                        @if (AppState.HasPermission("hr.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Anular" Disabled="@(context.Item.Estado == "ANULADA")"
+                                OnClick="@(() => AnularPlanilla(context.Item.Id))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showProcesar)
+{
+    <MudDialog Visible="_showProcesar" VisibleChanged="@(v => _showProcesar = v)">
+        <TitleContent><MudText Typo="Typo.h6">Procesar Planilla Mensual</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-3">Calcula la boleta de todos los trabajadores activos para el período indicado y genera el asiento contable de provisión.</MudText>
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="_anio" Label="Año" Variant="Variant.Outlined" Min="2020" Max="2100" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="_mes" Label="Mes" Variant="Variant.Outlined" Min="1" Max="12" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showProcesar = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Procesar" Disabled="_saving">Procesar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showView && _viewing != null)
+{
+    <MudDialog Visible="_showView" VisibleChanged="@(v => _showView = v)" Options="_dialogOptionsGrande">
+        <TitleContent><MudText Typo="Typo.h6">Planilla @_viewing.Numero — @($"{_viewing.Mes:00}/{_viewing.Anio}")</MudText></TitleContent>
+        <DialogContent>
+            @foreach (var b in _viewing.Boletas)
+            {
+                <MudCard Class="mb-3" Elevation="2">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.subtitle1"><b>@b.TrabajadorCodigo - @b.TrabajadorNombre</b> (@b.RegimenPension)</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" title="Descargar boleta CSV"
+                                OnClick="@(() => DescargarBoletaCsv(b))" />
+                        </div>
+                        <MudTable Items="b.Conceptos" Dense="true" Class="mt-2">
+                            <HeaderContent><MudTh>Concepto</MudTh><MudTh>Tipo</MudTh><MudTh Style="text-align:right">Monto</MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.ConceptoNombre</MudTd>
+                                <MudTd>@context.Tipo</MudTd>
+                                <MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                        <MudText Class="mt-2">Ingresos: <b>@b.TotalIngresos.ToString("N2")</b> &nbsp;|&nbsp;
+                            Descuentos: <b>@b.TotalDescuentos.ToString("N2")</b> &nbsp;|&nbsp;
+                            Neto a pagar: <b>S/ @b.NetoPagar.ToString("N2")</b></MudText>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showView = false)">Cerrar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<PlanillaModel> _planillas = new();
+    private bool _loading = true, _saving;
+    private bool _showProcesar, _showView;
+    private PlanillaModel? _viewing;
+    private int _anio = DateTime.Now.Year;
+    private int _mes = DateTime.Now.Month;
+    private readonly DialogOptions _dialogOptionsGrande = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<PlanillaModel>>("api/planillas");
+        if (result?.Success == true) _planillas = (result.Data ?? new()).OrderByDescending(p => p.Anio).ThenByDescending(p => p.Mes).ToList();
+        _loading = false;
+    }
+
+    private void OpenProcesarDialog() { _anio = DateTime.Now.Year; _mes = DateTime.Now.Month; _showProcesar = true; }
+
+    private async Task Procesar()
+    {
+        _saving = true;
+        var result = await ApiService.PostAsync<PlanillaModel>("api/planillas/procesar", new { Anio = _anio, Mes = _mes });
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showProcesar = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo procesar la planilla", Severity.Error);
+        _saving = false;
+    }
+
+    private void OpenViewDialog(PlanillaModel p) { _viewing = p; _showView = true; }
+
+    private async Task DescargarBoletaCsv(PlanillaBoletaModel b)
+    {
+        if (_viewing == null) return;
+        await ApiService.DownloadFileAsync(JS, $"api/planillas/{_viewing.Id}/boleta/{b.TrabajadorId}/csv", $"boleta_{b.TrabajadorCodigo}.csv");
+    }
+
+    private async Task AnularPlanilla(int id)
+    {
+        var result = await ApiService.PatchAsync<PlanillaModel>($"api/planillas/{id}/anular");
+        if (result?.Success == true) { Snackbar.Add("Planilla anulada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo anular la planilla", Severity.Error);
+    }
+}

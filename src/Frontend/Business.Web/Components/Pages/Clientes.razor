@@ -1,0 +1,167 @@
+﻿@page "/clientes"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Clientes - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Clientes</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudTextField @bind-Value="_searchTerm" Label="Buscar" AdornmentIcon="@Icons.Material.Filled.Search"
+                Adornment="Adornment.Start" Variant="Variant.Outlined" Immediate="true" />
+        </CardHeaderContent>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("masters.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nuevo Cliente</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="ClienteModel" Items="_clientes.Where(Filter)" Loading="_loading"
+            Filterable="false" Hover="true" Striped="true">
+            <Columns>
+                <PropertyColumn Property="x => x.RazonSocial" Title="Razón Social" />
+                <PropertyColumn Property="x => x.RUC" Title="RUC" />
+                <PropertyColumn Property="x => x.Telefono" Title="Teléfono" />
+                <PropertyColumn Property="x => x.Email" Title="Email" />
+                <PropertyColumn Property="x => x.LimiteCredito" Title="Límite Crédito" Format="N2" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Color="@(context.Item.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("masters.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteCliente(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editingCliente.Id == 0 ? "Nuevo Cliente" : "Editar Cliente")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudForm @ref="_form">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_editingCliente.RazonSocial" Label="Razón Social" Required="true" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_editingCliente.RUC" Label="RUC" Required="true" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_editingCliente.Telefono" Label="Teléfono" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_editingCliente.Direccion" Label="Dirección" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_editingCliente.Email" Label="Email" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_editingCliente.LimiteCredito" Label="Límite de Crédito" Variant="Variant.Outlined" Format="N2" />
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCliente">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<ClienteModel> _clientes = new();
+    private bool _loading = true;
+    private string _searchTerm = string.Empty;
+    private bool _showDialog;
+    private ClienteModel _editingCliente = new();
+    private MudForm _form = null!;
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<ClienteModel>>("api/clientes");
+        if (result?.Success == true)
+            _clientes = result.Data ?? new();
+        _loading = false;
+    }
+
+    private bool Filter(ClienteModel c) =>
+        string.IsNullOrWhiteSpace(_searchTerm) ||
+        c.RazonSocial.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+        c.RUC.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase);
+
+    private void OpenCreateDialog()
+    {
+        _editingCliente = new ClienteModel();
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(ClienteModel cliente)
+    {
+        _editingCliente = new ClienteModel
+        {
+            Id = cliente.Id, RazonSocial = cliente.RazonSocial, RUC = cliente.RUC,
+            Direccion = cliente.Direccion, Telefono = cliente.Telefono, Email = cliente.Email,
+            LimiteCredito = cliente.LimiteCredito
+        };
+        _showDialog = true;
+    }
+
+    private async Task SaveCliente()
+    {
+        var data = new { _editingCliente.RazonSocial, _editingCliente.RUC, _editingCliente.Direccion,
+            _editingCliente.Telefono, _editingCliente.Email, _editingCliente.LimiteCredito,
+            TipoDocumento = "RUC" };
+
+        ApiResponse<ClienteModel>? result;
+        if (_editingCliente.Id == 0)
+            result = await ApiService.PostAsync<ClienteModel>("api/clientes", data);
+        else
+            result = await ApiService.PutAsync<ClienteModel>($"api/clientes/{_editingCliente.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else
+        {
+            Snackbar.Add(result?.Message ?? "Error al guardar", Severity.Error);
+        }
+    }
+
+    private async Task DeleteCliente(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/clientes/{id}");
+        if (result?.Success == true)
+        {
+            Snackbar.Add("Cliente eliminado", Severity.Success);
+            await LoadData();
+        }
+    }
+}

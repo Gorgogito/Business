@@ -1,0 +1,121 @@
+﻿@page "/categorias"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Categorías - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Categorías de Productos</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("masters.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nueva Categoría</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="CategoriaModel" Items="_categorias" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Nombre" Title="Nombre" />
+                <PropertyColumn Property="x => x.Descripcion" Title="Descripción" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small"
+                            Color="@(context.Item.IsActive ? Color.Success : Color.Error)">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("masters.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteCategoria(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nueva Categoría" : "Editar Categoría")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Nombre" Label="Nombre" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Descripcion" Label="Descripción" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCategoria">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<CategoriaModel> _categorias = new();
+    private bool _loading = true;
+    private bool _showDialog;
+    private CategoriaModel _editing = new();
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<CategoriaModel>>("api/categorias");
+        if (result?.Success == true) _categorias = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog() { _editing = new CategoriaModel(); _showDialog = true; }
+
+    private void OpenEditDialog(CategoriaModel c)
+    {
+        _editing = new CategoriaModel { Id = c.Id, Nombre = c.Nombre, Descripcion = c.Descripcion };
+        _showDialog = true;
+    }
+
+    private async Task SaveCategoria()
+    {
+        var data = new { _editing.Nombre, _editing.Descripcion };
+        ApiResponse<CategoriaModel>? result;
+        if (_editing.Id == 0)
+            result = await ApiService.PostAsync<CategoriaModel>("api/categorias", data);
+        else
+            result = await ApiService.PutAsync<CategoriaModel>($"api/categorias/{_editing.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+
+    private async Task DeleteCategoria(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/categorias/{id}");
+        if (result?.Success == true) { Snackbar.Add("Categoría eliminada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

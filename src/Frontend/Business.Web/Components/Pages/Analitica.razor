@@ -1,0 +1,338 @@
+@page "/analitica"
+@inject ApiService ApiService
+@inject AppStateService AppState
+
+<PageTitle>Analítica Gerencial - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Analítica Gerencial (BI)</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid Class="align-center">
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker @bind-Date="_desde" Label="Desde" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker @bind-Date="_hasta" Label="Hasta" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                OnClick="CargarTodo" Disabled="_loading">Aplicar</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="mt-2">
+    @if (AppState.HasPermission("sales.view"))
+    {
+        <MudTabPanel Text="Ventas" Icon="@Icons.Material.Filled.TrendingUp">
+            @if (_ventas != null)
+            {
+                <MudGrid>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Ventas (base)", $"S/ {_ventas.TotalVentas:N2}", Color.Primary)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Costo estándar", $"S/ {_ventas.TotalCosto:N2}", Color.Secondary)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Margen bruto", $"S/ {_ventas.MargenBruto:N2} ({_ventas.MargenPorcentaje:N1}%)", Color.Success)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Ticket promedio", $"S/ {_ventas.TicketPromedio:N2} ({_ventas.NumComprobantes} doc.)", Color.Info)</MudItem>
+
+                    <MudItem xs="12" md="7">
+                        <MudCard Elevation="3" Class="mud-height-full">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Ventas por mes</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                @if (_ventasLabels.Length > 0)
+                                {
+                                    <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_ventasSeries" ChartLabels="_ventasLabels"
+                                        Width="100%" Height="300px" />
+                                }
+                                else { <MudText Color="Color.Secondary">Sin datos en el rango.</MudText> }
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="5">
+                        <MudCard Elevation="3" Class="mud-height-full">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Margen por categoría</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudTable Items="_ventas.PorCategoria" Dense="true" Striped="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>Categoría</MudTh><MudTh Style="text-align:right">Ventas</MudTh>
+                                        <MudTh Style="text-align:right">Margen</MudTh><MudTh Style="text-align:right">%</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Categoria</MudTd>
+                                        <MudTd Style="text-align:right">@context.Ventas.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.Margen.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.MargenPorcentaje.ToString("N1")%</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" md="7">
+                        <MudCard Elevation="3">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Top productos (por venta)</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudTable Items="_ventas.TopProductos" Dense="true" Striped="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>Producto</MudTh><MudTh Style="text-align:right">Cant.</MudTh>
+                                        <MudTh Style="text-align:right">Ventas</MudTh><MudTh Style="text-align:right">Margen</MudTh><MudTh Style="text-align:right">%</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Producto</MudTd>
+                                        <MudTd Style="text-align:right">@context.Cantidad.ToString("N0")</MudTd>
+                                        <MudTd Style="text-align:right">@context.Ventas.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.Margen.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.MargenPorcentaje.ToString("N1")%</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="5">
+                        <MudCard Elevation="3">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Top clientes</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudTable Items="_ventas.TopClientes" Dense="true" Striped="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>Cliente</MudTh><MudTh Style="text-align:right">Ventas</MudTh><MudTh Style="text-align:right">Doc.</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Cliente</MudTd>
+                                        <MudTd Style="text-align:right">@context.Ventas.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.NumComprobantes</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudTabPanel>
+    }
+
+    @if (AppState.HasPermission("inventory.view"))
+    {
+        <MudTabPanel Text="Inventario" Icon="@Icons.Material.Filled.Inventory">
+            @if (_inventario != null)
+            {
+                <MudGrid>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Valor inventario", $"S/ {_inventario.ValorTotalInventario:N2}", Color.Primary)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Costo salidas", $"S/ {_inventario.CostoSalidasPeriodo:N2}", Color.Secondary)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Rotación global", _inventario.RotacionGlobal.ToString("N2"), Color.Info)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Stock crítico", $"{_inventario.NumStockCritico} / {_inventario.NumItems} ítems", _inventario.NumStockCritico > 0 ? Color.Error : Color.Success)</MudItem>
+
+                    <MudItem xs="12">
+                        <MudCard Elevation="3">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Existencias valorizadas y rotación</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudTable Items="_inventario.Items" Dense="true" Striped="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>Producto</MudTh><MudTh>Almacén</MudTh>
+                                        <MudTh Style="text-align:right">Cant.</MudTh><MudTh Style="text-align:right">Costo prom.</MudTh>
+                                        <MudTh Style="text-align:right">Valor</MudTh><MudTh Style="text-align:right">Rotación</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Producto</MudTd>
+                                        <MudTd>@context.Almacen</MudTd>
+                                        <MudTd Style="text-align:right">@context.CantidadActual.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.CostoPromedio.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.Valor.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.Rotacion.ToString("N2")</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudCard Elevation="3">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6" Color="Color.Error">Stock crítico (bajo mínimo)</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                @if (_inventario.StockCritico.Any())
+                                {
+                                    <MudTable Items="_inventario.StockCritico" Dense="true" Striped="true">
+                                        <HeaderContent><MudTh>Producto</MudTh><MudTh>Almacén</MudTh><MudTh Style="text-align:right">Cant.</MudTh><MudTh Style="text-align:right">Mínimo</MudTh></HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd>@context.Producto</MudTd><MudTd>@context.Almacen</MudTd>
+                                            <MudTd Style="text-align:right">@context.CantidadActual.ToString("N2")</MudTd>
+                                            <MudTd Style="text-align:right">@context.StockMinimo.ToString("N2")</MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                                else { <MudText Color="Color.Success">Ningún producto por debajo del mínimo.</MudText> }
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudCard Elevation="3">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Sin movimiento en el período</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                @if (_inventario.SinMovimiento.Any())
+                                {
+                                    <MudTable Items="_inventario.SinMovimiento" Dense="true" Striped="true">
+                                        <HeaderContent><MudTh>Producto</MudTh><MudTh>Almacén</MudTh><MudTh Style="text-align:right">Cant.</MudTh><MudTh Style="text-align:right">Valor</MudTh></HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd>@context.Producto</MudTd><MudTd>@context.Almacen</MudTd>
+                                            <MudTd Style="text-align:right">@context.CantidadActual.ToString("N2")</MudTd>
+                                            <MudTd Style="text-align:right">@context.Valor.ToString("N2")</MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                                else { <MudText Color="Color.Secondary">Todos los productos tuvieron movimiento.</MudText> }
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudTabPanel>
+    }
+
+    @if (AppState.HasPermission("accounting.view"))
+    {
+        <MudTabPanel Text="Financiera" Icon="@Icons.Material.Filled.AccountBalance">
+            @if (_financiera != null)
+            {
+                <MudGrid>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Por cobrar", $"S/ {_financiera.CarteraCobrar.Total:N2} ({_financiera.CarteraCobrar.Documentos} doc.)", Color.Warning)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Por pagar", $"S/ {_financiera.CarteraPagar.Total:N2} ({_financiera.CarteraPagar.Documentos} doc.)", Color.Error)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Utilidad neta", $"S/ {_financiera.EstadoResultados.UtilidadNeta:N2}", Color.Success)</MudItem>
+                    <MudItem xs="12" sm="6" md="3">@Kpi("Ingresos período", $"S/ {_financiera.EstadoResultados.Ingresos:N2}", Color.Primary)</MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudCard Elevation="3" Class="mud-height-full">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Antigüedad por cobrar</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                @if (_agingLabels.Length > 0 && _financiera.CarteraCobrar.Total > 0)
+                                {
+                                    <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="_agingSeries" ChartLabels="_agingLabels" Width="220px" Height="220px" />
+                                }
+                                <MudTable Items="_financiera.CarteraCobrar.Tramos" Dense="true">
+                                    <HeaderContent><MudTh>Tramo</MudTh><MudTh Style="text-align:right">Monto</MudTh><MudTh Style="text-align:right">Doc.</MudTh></HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Tramo</MudTd>
+                                        <MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd>
+                                        <MudTd Style="text-align:right">@context.Documentos</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="8">
+                        <MudCard Elevation="3" Class="mud-height-full">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Detalle cartera por cobrar</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudTable Items="_financiera.CarteraCobrar.Detalle" Dense="true" Striped="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>Cliente</MudTh><MudTh>Documento</MudTh><MudTh>Vence</MudTh>
+                                        <MudTh Style="text-align:right">Días</MudTh><MudTh Style="text-align:right">Saldo</MudTh><MudTh>Tramo</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Contraparte</MudTd>
+                                        <MudTd>@context.Documento</MudTd>
+                                        <MudTd>@context.FechaVencimiento.ToString("dd/MM/yyyy")</MudTd>
+                                        <MudTd Style="text-align:right">@context.DiasVencido</MudTd>
+                                        <MudTd Style="text-align:right">@context.Saldo.ToString("N2")</MudTd>
+                                        <MudTd><MudChip T="string" Size="Size.Small" Color="@TramoColor(context.Tramo)">@context.Tramo</MudChip></MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudCard Elevation="3">
+                            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">Estado de resultados (drill por cuenta)</MudText></CardHeaderContent></MudCardHeader>
+                            <MudCardContent>
+                                <MudText>Ingresos: <b>S/ @_financiera.EstadoResultados.Ingresos.ToString("N2")</b> &nbsp;|&nbsp;
+                                    Costo de ventas: <b>S/ @_financiera.EstadoResultados.CostoVentas.ToString("N2")</b> &nbsp;|&nbsp;
+                                    Gastos: <b>S/ @_financiera.EstadoResultados.Gastos.ToString("N2")</b> &nbsp;|&nbsp;
+                                    Utilidad neta: <b>S/ @_financiera.EstadoResultados.UtilidadNeta.ToString("N2")</b></MudText>
+                                <MudTable Items="_financiera.EstadoResultados.Detalle" Dense="true" Striped="true" Hover="true" Class="mt-2">
+                                    <HeaderContent><MudTh>Grupo</MudTh><MudTh>Cuenta</MudTh><MudTh>Nombre</MudTh><MudTh Style="text-align:right">Monto</MudTh></HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Grupo</MudTd>
+                                        <MudTd>@context.Codigo</MudTd>
+                                        <MudTd>@context.Nombre</MudTd>
+                                        <MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudTabPanel>
+    }
+</MudTabs>
+
+@code {
+    private DateTime? _desde = new DateTime(DateTime.Now.Year, 1, 1);
+    private DateTime? _hasta = DateTime.Now.Date;
+    private bool _loading;
+
+    private AnaliticaVentasModel? _ventas;
+    private AnaliticaInventarioModel? _inventario;
+    private AnaliticaFinancieraModel? _financiera;
+
+    private List<ChartSeries<double>> _ventasSeries = new();
+    private string[] _ventasLabels = Array.Empty<string>();
+    private List<ChartSeries<double>> _agingSeries = new();
+    private string[] _agingLabels = Array.Empty<string>();
+
+    protected override async Task OnInitializedAsync() => await CargarTodo();
+
+    private async Task CargarTodo()
+    {
+        _loading = true;
+        var q = $"?desde={_desde:yyyy-MM-dd}&hasta={_hasta:yyyy-MM-dd}";
+
+        if (AppState.HasPermission("sales.view"))
+        {
+            var r = await ApiService.GetAsync<AnaliticaVentasModel>($"api/analitica/ventas{q}");
+            if (r?.Success == true) _ventas = r.Data;
+            _ventasLabels = _ventas?.PorMes.Select(m => m.Periodo).ToArray() ?? Array.Empty<string>();
+            _ventasSeries = new()
+            {
+                new ChartSeries<double> { Name = "Ventas", Data = _ventas?.PorMes.Select(m => (double)m.Ventas).ToArray() ?? Array.Empty<double>() },
+                new ChartSeries<double> { Name = "Margen", Data = _ventas?.PorMes.Select(m => (double)m.Margen).ToArray() ?? Array.Empty<double>() }
+            };
+        }
+
+        if (AppState.HasPermission("inventory.view"))
+        {
+            var r = await ApiService.GetAsync<AnaliticaInventarioModel>($"api/analitica/inventario{q}");
+            if (r?.Success == true) _inventario = r.Data;
+        }
+
+        if (AppState.HasPermission("accounting.view"))
+        {
+            var r = await ApiService.GetAsync<AnaliticaFinancieraModel>($"api/analitica/financiera{q}");
+            if (r?.Success == true) _financiera = r.Data;
+            _agingLabels = _financiera?.CarteraCobrar.Tramos.Select(t => t.Tramo).ToArray() ?? Array.Empty<string>();
+            _agingSeries = new()
+            {
+                new ChartSeries<double> { Name = "Por cobrar", Data = _financiera?.CarteraCobrar.Tramos.Select(t => (double)t.Monto).ToArray() ?? Array.Empty<double>() }
+            };
+        }
+
+        _loading = false;
+    }
+
+    private RenderFragment Kpi(string titulo, string valor, Color color) =>@<MudCard Elevation="3">
+        <MudCardContent>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">@titulo</MudText>
+            <MudText Typo="Typo.h6" Color="color">@valor</MudText>
+        </MudCardContent>
+    </MudCard>;
+
+    private static Color TramoColor(string tramo) => tramo switch
+    {
+        "Vigente" => Color.Success,
+        "1-30" => Color.Info,
+        "31-60" => Color.Warning,
+        _ => Color.Error
+    };
+}

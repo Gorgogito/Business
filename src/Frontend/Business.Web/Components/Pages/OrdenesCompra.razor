@@ -1,0 +1,159 @@
+﻿@page "/ordenes-compra"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Órdenes de Compra - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Órdenes de Compra</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("purchases.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="@(() => _showCreate = true)">Nueva OC</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="OrdenCompraModel" Items="_ordenes" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <PropertyColumn Property="x => x.ProveedorNombre" Title="Proveedor" />
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Entrega">
+                    <CellTemplate>@context.Item.FechaEntrega.ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Total">
+                    <CellTemplate>S/ @context.Item.Total.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@GetEstadoColor(context.Item.Estado)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("purchases.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small"
+                                title="Aprobar" OnClick="@(() => CambiarEstado(context.Item.Id, "APROBADA"))"
+                                Disabled="@(context.Item.Estado != "PENDIENTE")" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Cancelar" OnClick="@(() => CambiarEstado(context.Item.Id, "CANCELADA"))"
+                                Disabled="@(context.Item.Estado == "RECIBIDA" || context.Item.Estado == "CANCELADA")" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)">
+        <TitleContent><MudText Typo="Typo.h6">Nueva Orden de Compra</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_newProveedorId" Label="Proveedor" Variant="Variant.Outlined" Required="true">
+                        @foreach (var p in _proveedores)
+                        { <MudSelectItem Value="@p.Id">@p.RazonSocial</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_fechaEntrega" Label="Fecha Entrega" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_observaciones" Label="Observaciones" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1">Productos</MudText>
+                    @foreach (var det in _detalles)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="5">
+                                <MudSelect @bind-Value="det.ProductoId" Label="Producto" Variant="Variant.Outlined" Dense="true">
+                                    @foreach (var p in _productos)
+                                    { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="det.Cantidad" Label="Cantidad" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1m" />
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="det.PrecioUnitario" Label="Precio Unit." Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => _detalles.Remove(det))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Size="Size.Small" Class="mt-2" OnClick="@(() => _detalles.Add(new OrdenCompraDetalleModel { Cantidad = 1 }))">Agregar</MudButton>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveOrden" Disabled="_saving">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<OrdenCompraModel> _ordenes = new();
+    private List<ProveedorModel> _proveedores = new();
+    private List<ProductoModel> _productos = new();
+    private bool _loading, _saving, _showCreate;
+    private int _newProveedorId;
+    private DateTime? _fechaEntrega = DateTime.Now.AddDays(7);
+    private string _observaciones = string.Empty;
+    private List<OrdenCompraDetalleModel> _detalles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var pResult = await ApiService.GetAsync<List<ProveedorModel>>("api/proveedores");
+        if (pResult?.Success == true) _proveedores = pResult.Data ?? new();
+        var prodResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (prodResult?.Success == true) _productos = prodResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<OrdenCompraModel>>("api/ordenes-compra");
+        if (result?.Success == true) _ordenes = result.Data ?? new();
+        _loading = false;
+    }
+
+    private Color GetEstadoColor(string estado) => estado switch
+    {
+        "RECIBIDA" => Color.Success, "CANCELADA" => Color.Error,
+        "APROBADA" => Color.Info, _ => Color.Warning
+    };
+
+    private async Task SaveOrden()
+    {
+        if (_newProveedorId == 0 || !_detalles.Any()) { Snackbar.Add("Complete proveedor y al menos un producto", Severity.Warning); return; }
+        _saving = true;
+        var data = new { ProveedorId = _newProveedorId, FechaEntrega = _fechaEntrega ?? DateTime.Now.AddDays(7), Observaciones = _observaciones, Detalles = _detalles.Select(d => new { d.ProductoId, d.Cantidad, d.PrecioUnitario }) };
+        var result = await ApiService.PostAsync<OrdenCompraModel>("api/ordenes-compra", data);
+        if (result?.Success == true) { Snackbar.Add("Orden de compra creada", Severity.Success); _showCreate = false; _detalles.Clear(); _newProveedorId = 0; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task CambiarEstado(int id, string estado)
+    {
+        var result = await ApiService.PatchAsync<OrdenCompraModel>($"api/ordenes-compra/{id}/estado", estado);
+        if (result?.Success == true) { Snackbar.Add("Estado actualizado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

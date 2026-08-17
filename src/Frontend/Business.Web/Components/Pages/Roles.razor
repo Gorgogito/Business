@@ -1,0 +1,134 @@
+﻿@page "/roles"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Roles - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Roles</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.body1">Administre los roles y sus permisos</MudText>
+        </CardHeaderContent>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("security.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nuevo Rol</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="RoleModel" Items="_roles" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Name" Title="Nombre" />
+                <PropertyColumn Property="x => x.Description" Title="Descripción" />
+                <TemplateColumn Title="Permisos">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.Item.PermissionIds.Count permisos</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Menús">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@context.Item.MenuIds.Count menús</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small"
+                            Color="@(context.Item.IsActive ? Color.Success : Color.Error)">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("security.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteRol(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nuevo Rol" : "Editar Rol")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Name" Label="Nombre del Rol" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Description" Label="Descripción" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveRol">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<RoleModel> _roles = new();
+    private bool _loading = true;
+    private bool _showDialog;
+    private RoleModel _editing = new();
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<RoleModel>>("api/roles");
+        if (result?.Success == true) _roles = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog() { _editing = new RoleModel(); _showDialog = true; }
+
+    private void OpenEditDialog(RoleModel r)
+    {
+        _editing = new RoleModel { Id = r.Id, Name = r.Name, Description = r.Description, IsActive = r.IsActive };
+        _showDialog = true;
+    }
+
+    private async Task SaveRol()
+    {
+        var data = new { _editing.Name, _editing.Description, PermissionIds = _editing.PermissionIds, MenuIds = _editing.MenuIds };
+        ApiResponse<RoleModel>? result;
+        if (_editing.Id == 0)
+            result = await ApiService.PostAsync<RoleModel>("api/roles", data);
+        else
+            result = await ApiService.PutAsync<RoleModel>($"api/roles/{_editing.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+
+    private async Task DeleteRol(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/roles/{id}");
+        if (result?.Success == true) { Snackbar.Add("Rol eliminado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

@@ -1,0 +1,101 @@
+﻿@page "/recepciones"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Recepciones de Compra - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Recepciones de Compra</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("purchases.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.MoveToInbox"
+                    OnClick="@(() => _showCreate = true)">Registrar Recepción</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="RecepcionCompraModel" Items="_recepciones" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <PropertyColumn Property="x => x.OrdenCompraNumero" Title="Orden de Compra" />
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="x => x.Observaciones" Title="Observaciones" />
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)">
+        <TitleContent><MudText Typo="Typo.h6">Registrar Recepción de Compra</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect Value="_ordenCompraId" Label="Orden de Compra" Variant="Variant.Outlined" Required="true"
+                        ValueChanged="@((int v) => { _ordenCompraId = v; LoadOrdenDetalle(v); })">
+                        @foreach (var o in _ordenes.Where(x => x.Estado == "APROBADA"))
+                        { <MudSelectItem Value="@o.Id">@o.Numero - @o.ProveedorNombre</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_observaciones" Label="Observaciones" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveRecepcion" Disabled="_saving">Registrar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<RecepcionCompraModel> _recepciones = new();
+    private List<OrdenCompraModel> _ordenes = new();
+    private bool _loading, _saving, _showCreate;
+    private int _ordenCompraId;
+    private string _observaciones = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var oResult = await ApiService.GetAsync<List<OrdenCompraModel>>("api/ordenes-compra");
+        if (oResult?.Success == true) _ordenes = oResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<RecepcionCompraModel>>("api/recepciones");
+        if (result?.Success == true) _recepciones = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void LoadOrdenDetalle(int ordenId) { }
+
+    private async Task SaveRecepcion()
+    {
+        if (_ordenCompraId == 0) { Snackbar.Add("Seleccione una Orden de Compra", Severity.Warning); return; }
+        _saving = true;
+        var orden = _ordenes.FirstOrDefault(o => o.Id == _ordenCompraId);
+        var detalles = orden?.Detalles.Select(d => new { d.ProductoId, CantidadEsperada = d.Cantidad, CantidadRecibida = d.Cantidad, d.PrecioUnitario }) ?? Enumerable.Empty<object>();
+        var data = new { OrdenCompraId = _ordenCompraId, Observaciones = _observaciones, Detalles = detalles };
+        var result = await ApiService.PostAsync<RecepcionCompraModel>("api/recepciones", data);
+        if (result?.Success == true) { Snackbar.Add("Recepción registrada", Severity.Success); _showCreate = false; _ordenCompraId = 0; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+        _saving = false;
+    }
+}

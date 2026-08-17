@@ -1,0 +1,223 @@
+@page "/ordenes-fabricacion"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Órdenes de Fabricación - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Órdenes de Fabricación</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("production.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="OpenCreateDialog">Nueva Orden</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="OrdenFabricacionModel" Items="_ordenes" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <PropertyColumn Property="x => x.ProductoNombre" Title="Producto a fabricar" />
+                <TemplateColumn Title="Cantidad">
+                    <CellTemplate>@context.Item.CantidadProducir.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Costo total">
+                    <CellTemplate>@(context.Item.CostoTotal > 0 ? $"S/ {context.Item.CostoTotal:N2}" : "—")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Costo unitario">
+                    <CellTemplate>@(context.Item.CostoUnitario > 0 ? $"S/ {context.Item.CostoUnitario:N4}" : "—")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@EstadoColor(context.Item.Estado)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Info" Size="Size.Small"
+                            OnClick="@(() => OpenViewDialog(context.Item))" />
+                        @if (AppState.HasPermission("production.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Color="Color.Success" Size="Size.Small"
+                                title="Procesar" Disabled="@(context.Item.Estado != "PENDIENTE")"
+                                OnClick="@(() => OpenProcesarDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Anular" Disabled="@(context.Item.Estado == "ANULADA")"
+                                OnClick="@(() => AnularOrden(context.Item.Id))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showView && _viewing != null)
+{
+    <MudDialog Visible="_showView" VisibleChanged="@(v => _showView = v)">
+        <TitleContent><MudText Typo="Typo.h6">Orden @_viewing.Numero — @_viewing.ProductoNombre</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-2">Producir @_viewing.CantidadProducir.ToString("N2") unidades.</MudText>
+            <MudTable Items="_viewing.Detalles" Dense="true" Striped="true">
+                <HeaderContent><MudTh>Insumo</MudTh><MudTh Style="text-align:right">Cantidad</MudTh><MudTh Style="text-align:right">Costo unit.</MudTh><MudTh Style="text-align:right">Costo total</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.InsumoNombre</MudTd>
+                    <MudTd Style="text-align:right">@context.Cantidad.ToString("N4")</MudTd>
+                    <MudTd Style="text-align:right">@(context.CostoUnitario > 0 ? context.CostoUnitario.ToString("N4") : "")</MudTd>
+                    <MudTd Style="text-align:right">@(context.CostoTotal > 0 ? context.CostoTotal.ToString("N2") : "")</MudTd>
+                </RowTemplate>
+            </MudTable>
+            @if (_viewing.CostoTotal > 0)
+            {
+                <MudText Class="mt-3">MP: <b>@_viewing.CostoMateriaPrima.ToString("N2")</b> &nbsp;|&nbsp;
+                    MOD: <b>@_viewing.CostoManoObra.ToString("N2")</b> &nbsp;|&nbsp;
+                    CIF: <b>@_viewing.CostoIndirecto.ToString("N2")</b> &nbsp;|&nbsp;
+                    Total: <b>S/ @_viewing.CostoTotal.ToString("N2")</b> &nbsp;|&nbsp;
+                    Unitario: <b>S/ @_viewing.CostoUnitario.ToString("N4")</b></MudText>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showView = false)">Cerrar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)">
+        <TitleContent><MudText Typo="Typo.h6">Nueva Orden de Fabricación</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect @bind-Value="_nuevoProductoId" Label="Producto a fabricar" Variant="Variant.Outlined" Required="true"
+                        HelperText="Debe tener una receta activa">
+                        @foreach (var p in _productos)
+                        { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="_nuevaCantidad" Label="Cantidad a producir" Variant="Variant.Outlined" Min="0.0001m" Required="true" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSelect @bind-Value="_nuevoAlmacenId" Label="Almacén destino" Variant="Variant.Outlined">
+                        @foreach (var a in _almacenes)
+                        { <MudSelectItem Value="@a.Id">@a.Nombre</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CrearOrden" Disabled="_saving">Crear</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showProcesar)
+{
+    <MudDialog Visible="_showProcesar" VisibleChanged="@(v => _showProcesar = v)">
+        <TitleContent><MudText Typo="Typo.h6">Procesar Orden @_procesandoNumero</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-3">Consume la materia prima de la receta (al costo promedio), ingresa el producto terminado al inventario y registra el asiento de producción.</MudText>
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="_costoManoObra" Label="Mano de obra (MOD)" Variant="Variant.Outlined" Min="0m" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="_costoIndirecto" Label="Costos indirectos (CIF)" Variant="Variant.Outlined" Min="0m" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showProcesar = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmarProcesar" Disabled="_saving">Procesar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<OrdenFabricacionModel> _ordenes = new();
+    private List<ProductoModel> _productos = new();
+    private List<AlmacenModel> _almacenes = new();
+    private bool _loading = true, _saving;
+    private bool _showCreate, _showProcesar, _showView;
+    private OrdenFabricacionModel? _viewing;
+    private int _nuevoProductoId, _nuevoAlmacenId = 1;
+    private decimal _nuevaCantidad = 1;
+    private int _procesandoId;
+    private string _procesandoNumero = string.Empty;
+    private decimal _costoManoObra, _costoIndirecto;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var pResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (pResult?.Success == true) _productos = pResult.Data ?? new();
+        var aResult = await ApiService.GetAsync<List<AlmacenModel>>("api/almacenes");
+        if (aResult?.Success == true) _almacenes = aResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<OrdenFabricacionModel>>("api/ordenes-fabricacion");
+        if (result?.Success == true) _ordenes = (result.Data ?? new()).OrderByDescending(o => o.Fecha).ToList();
+        _loading = false;
+    }
+
+    private static Color EstadoColor(string estado) => estado switch
+    {
+        "TERMINADA" => Color.Success, "ANULADA" => Color.Error, _ => Color.Info
+    };
+
+    private void OpenViewDialog(OrdenFabricacionModel o) { _viewing = o; _showView = true; }
+
+    private void OpenCreateDialog() { _nuevoProductoId = 0; _nuevaCantidad = 1; _nuevoAlmacenId = _almacenes.FirstOrDefault()?.Id ?? 1; _showCreate = true; }
+
+    private async Task CrearOrden()
+    {
+        if (_nuevoProductoId == 0 || _nuevaCantidad <= 0)
+        {
+            Snackbar.Add("Seleccione el producto y una cantidad válida", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new { ProductoId = _nuevoProductoId, CantidadProducir = _nuevaCantidad, AlmacenId = _nuevoAlmacenId };
+        var result = await ApiService.PostAsync<OrdenFabricacionModel>("api/ordenes-fabricacion", data);
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showCreate = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo crear la orden", Severity.Error);
+        _saving = false;
+    }
+
+    private void OpenProcesarDialog(OrdenFabricacionModel o)
+    {
+        _procesandoId = o.Id; _procesandoNumero = o.Numero;
+        _costoManoObra = 0; _costoIndirecto = 0;
+        _showProcesar = true;
+    }
+
+    private async Task ConfirmarProcesar()
+    {
+        _saving = true;
+        var data = new { CostoManoObra = _costoManoObra, CostoIndirecto = _costoIndirecto };
+        var result = await ApiService.PostAsync<OrdenFabricacionModel>($"api/ordenes-fabricacion/{_procesandoId}/procesar", data);
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showProcesar = false; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo procesar la orden", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task AnularOrden(int id)
+    {
+        var result = await ApiService.PatchAsync<OrdenFabricacionModel>($"api/ordenes-fabricacion/{id}/anular");
+        if (result?.Success == true) { Snackbar.Add("Orden anulada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo anular la orden", Severity.Error);
+    }
+}

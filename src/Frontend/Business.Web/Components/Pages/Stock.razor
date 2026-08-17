@@ -1,0 +1,50 @@
+﻿@page "/stock"
+@inject ApiService ApiService
+
+<PageTitle>Stock - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Control de Inventario</MudText>
+
+<MudCard>
+    <MudCardContent>
+        <MudDataGrid T="StockModel" Items="_stocks" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true">
+            <Columns>
+                <PropertyColumn Property="x => x.ProductoCodigo" Title="Código" />
+                <PropertyColumn Property="x => x.ProductoNombre" Title="Producto" />
+                <PropertyColumn Property="x => x.AlmacenNombre" Title="Almacén" />
+                <PropertyColumn Property="x => x.CantidadActual" Title="Stock Actual" Format="N2" />
+                <PropertyColumn Property="x => x.StockMinimo" Title="Stock Mínimo" Format="N2" />
+                <PropertyColumn Property="x => x.StockMaximo" Title="Stock Máximo" Format="N2" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        @if (context.Item.CantidadActual <= context.Item.StockMinimo)
+                        {
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small">Stock Bajo</MudChip>
+                        }
+                        else if (context.Item.CantidadActual >= context.Item.StockMaximo)
+                        {
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">Stock Alto</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Normal</MudChip>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private List<StockModel> _stocks = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await ApiService.GetAsync<List<StockModel>>("api/stock");
+        if (result?.Success == true) _stocks = result.Data ?? new();
+        _loading = false;
+    }
+}

@@ -1,0 +1,166 @@
+﻿@page "/facturas"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Facturas - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Facturación</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("sales.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Receipt"
+                    OnClick="@(() => _showCreate = true)">Nueva Factura</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="FacturaModel" Items="_facturas" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <TemplateColumn Title="Comprobante">
+                    <CellTemplate>@context.Item.Serie-@context.Item.Numero</CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="x => x.TipoDocumento" Title="Tipo" />
+                <PropertyColumn Property="x => x.ClienteNombre" Title="Cliente" />
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="SubTotal">
+                    <CellTemplate>S/ @context.Item.SubTotal.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="IGV">
+                    <CellTemplate>S/ @context.Item.Igv.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Total">
+                    <CellTemplate><b>S/ @context.Item.Total.ToString("N2")</b></CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@GetEstadoColor(context.Item.Estado)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("sales.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small"
+                                title="Marcar Pagada" OnClick="@(() => CambiarEstado(context.Item.Id, "PAGADA"))"
+                                Disabled="@(context.Item.Estado != "EMITIDA")" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Anular" OnClick="@(() => CambiarEstado(context.Item.Id, "ANULADA"))"
+                                Disabled="@(context.Item.Estado == "ANULADA")" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)">
+        <TitleContent><MudText Typo="Typo.h6">Emitir Factura / Boleta</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_newClienteId" Label="Cliente" Variant="Variant.Outlined" Required="true">
+                        @foreach (var c in _clientes)
+                        { <MudSelectItem Value="@c.Id">@c.RazonSocial</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_tipoDoc" Label="Tipo Documento" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("FACTURA")">FACTURA</MudSelectItem>
+                        <MudSelectItem Value="@("BOLETA")">BOLETA</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1">Productos</MudText>
+                    @foreach (var det in _detalles)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="4">
+                                <MudSelect @bind-Value="det.ProductoId" Label="Producto" Variant="Variant.Outlined" Dense="true">
+                                    @foreach (var p in _productos)
+                                    { <MudSelectItem Value="@p.Id">@p.Nombre</MudSelectItem> }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudNumericField @bind-Value="det.Cantidad" Label="Cant." Variant="Variant.Outlined" Margin="Margin.Dense" Min="1m" />
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="det.PrecioUnitario" Label="Precio" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="2">
+                                <MudNumericField @bind-Value="det.Descuento" Label="Desc." Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => _detalles.Remove(det))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Size="Size.Small" Class="mt-2" OnClick="@(() => _detalles.Add(new FacturaDetalleModel { Cantidad = 1 }))">Agregar</MudButton>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFactura" Disabled="_saving">Emitir</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<FacturaModel> _facturas = new();
+    private List<ClienteModel> _clientes = new();
+    private List<ProductoModel> _productos = new();
+    private bool _loading, _saving, _showCreate;
+    private int _newClienteId;
+    private string _tipoDoc = "FACTURA";
+    private List<FacturaDetalleModel> _detalles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cResult = await ApiService.GetAsync<List<ClienteModel>>("api/clientes");
+        if (cResult?.Success == true) _clientes = cResult.Data ?? new();
+        var pResult = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (pResult?.Success == true) _productos = pResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<FacturaModel>>("api/facturas");
+        if (result?.Success == true) _facturas = result.Data ?? new();
+        _loading = false;
+    }
+
+    private Color GetEstadoColor(string estado) => estado switch
+    {
+        "PAGADA" => Color.Success, "ANULADA" => Color.Error, _ => Color.Info
+    };
+
+    private async Task SaveFactura()
+    {
+        if (_newClienteId == 0 || !_detalles.Any()) { Snackbar.Add("Complete cliente y al menos un producto", Severity.Warning); return; }
+        _saving = true;
+        var data = new { ClienteId = _newClienteId, TipoDocumento = _tipoDoc, Detalles = _detalles.Select(d => new { d.ProductoId, d.Cantidad, d.PrecioUnitario, d.Descuento }) };
+        var result = await ApiService.PostAsync<FacturaModel>("api/facturas", data);
+        if (result?.Success == true) { Snackbar.Add("Factura emitida", Severity.Success); _showCreate = false; _detalles.Clear(); _newClienteId = 0; await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task CambiarEstado(int id, string estado)
+    {
+        var result = await ApiService.PatchAsync<FacturaModel>($"api/facturas/{id}/estado", estado);
+        if (result?.Success == true) { Snackbar.Add("Estado actualizado", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}

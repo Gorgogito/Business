@@ -1,0 +1,180 @@
+﻿@page "/productos"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Productos - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Productos</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudTextField @bind-Value="_searchTerm" Label="Buscar" AdornmentIcon="@Icons.Material.Filled.Search"
+                Adornment="Adornment.Start" Variant="Variant.Outlined" Immediate="true" />
+        </CardHeaderContent>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("masters.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nuevo Producto</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="ProductoModel" Items="_productos.Where(Filter)" Loading="_loading"
+            Filterable="false" Hover="true" Striped="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Codigo" Title="Código" />
+                <PropertyColumn Property="x => x.Nombre" Title="Nombre" />
+                <PropertyColumn Property="x => x.CategoriaNombre" Title="Categoría" />
+                <PropertyColumn Property="x => x.PrecioCompra" Title="P. Compra" Format="N2" />
+                <PropertyColumn Property="x => x.PrecioVenta" Title="P. Venta" Format="N2" />
+                <PropertyColumn Property="x => x.Unidad" Title="Unidad" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Color="@(context.Item.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("masters.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteProducto(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editingProducto.Id == 0 ? "Nuevo Producto" : "Editar Producto")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudForm @ref="_form">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_editingProducto.Codigo" Label="Código" Required="true" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_editingProducto.CategoriaId" Label="Categoría" Required="true" Variant="Variant.Outlined">
+                            @foreach (var cat in _categorias)
+                            {
+                                <MudSelectItem Value="@cat.Id">@cat.Nombre</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_editingProducto.Nombre" Label="Nombre" Required="true" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_editingProducto.Descripcion" Label="Descripción" Variant="Variant.Outlined" Lines="2" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudNumericField @bind-Value="_editingProducto.PrecioCompra" Label="Precio Compra" Variant="Variant.Outlined" Format="N2" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudNumericField @bind-Value="_editingProducto.PrecioVenta" Label="Precio Venta" Required="true" Variant="Variant.Outlined" Format="N2" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudTextField @bind-Value="_editingProducto.Unidad" Label="Unidad" Variant="Variant.Outlined" />
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProducto">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<ProductoModel> _productos = new();
+    private List<CategoriaModel> _categorias = new();
+    private bool _loading = true;
+    private string _searchTerm = string.Empty;
+    private bool _showDialog;
+    private ProductoModel _editingProducto = new();
+    private MudForm _form = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var catResult = await ApiService.GetAsync<List<CategoriaModel>>("api/categorias");
+        if (catResult?.Success == true) _categorias = catResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<ProductoModel>>("api/productos");
+        if (result?.Success == true) _productos = result.Data ?? new();
+        _loading = false;
+    }
+
+    private bool Filter(ProductoModel p) =>
+        string.IsNullOrWhiteSpace(_searchTerm) ||
+        p.Nombre.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+        p.Codigo.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase);
+
+    private void OpenCreateDialog()
+    {
+        _editingProducto = new ProductoModel { Unidad = "UND" };
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(ProductoModel p)
+    {
+        _editingProducto = new ProductoModel
+        {
+            Id = p.Id, Codigo = p.Codigo, Nombre = p.Nombre, Descripcion = p.Descripcion,
+            PrecioCompra = p.PrecioCompra, PrecioVenta = p.PrecioVenta,
+            Unidad = p.Unidad, CategoriaId = p.CategoriaId
+        };
+        _showDialog = true;
+    }
+
+    private async Task SaveProducto()
+    {
+        var data = new { _editingProducto.Codigo, _editingProducto.Nombre, _editingProducto.Descripcion,
+            _editingProducto.PrecioCompra, _editingProducto.PrecioVenta, _editingProducto.Unidad, _editingProducto.CategoriaId };
+
+        ApiResponse<ProductoModel>? result;
+        if (_editingProducto.Id == 0)
+            result = await ApiService.PostAsync<ProductoModel>("api/productos", data);
+        else
+            result = await ApiService.PutAsync<ProductoModel>($"api/productos/{_editingProducto.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else
+        {
+            Snackbar.Add(result?.Message ?? "Error al guardar", Severity.Error);
+        }
+    }
+
+    private async Task DeleteProducto(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/productos/{id}");
+        if (result?.Success == true)
+        {
+            Snackbar.Add("Producto eliminado", Severity.Success);
+            await LoadData();
+        }
+    }
+}

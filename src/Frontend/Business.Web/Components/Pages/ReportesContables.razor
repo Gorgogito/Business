@@ -1,0 +1,255 @@
+@page "/reportes-contables"
+@inject ApiService ApiService
+@inject IJSRuntime JS
+
+<PageTitle>Reportes Contables - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Reportes Contables</MudText>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="mt-2">
+    <MudTabPanel Text="Libro Mayor" Icon="@Icons.Material.Filled.MenuBook">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudGrid Class="align-center">
+                <MudItem xs="12" sm="5" md="4">
+                    <MudSelect @bind-Value="_mayorCuentaId" Label="Cuenta" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var c in _cuentasMovimiento)
+                        { <MudSelectItem Value="@c.Id">@c.Codigo - @c.Nombre</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="3" md="3">
+                    <MudDatePicker @bind-Date="_mayorDesde" Label="Desde" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="3" md="3">
+                    <MudDatePicker @bind-Date="_mayorHasta" Label="Hasta" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="1" md="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CargarMayor" Disabled="@(_mayorCuentaId == 0)">Ver</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+        @if (_mayor != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="4">@Kpi("Total Debe", _mayor.TotalDebe.ToString("N2"), Color.Primary)</MudItem>
+                <MudItem xs="12" sm="4">@Kpi("Total Haber", _mayor.TotalHaber.ToString("N2"), Color.Secondary)</MudItem>
+                <MudItem xs="12" sm="4">@Kpi($"Saldo final ({_mayor.Naturaleza})", _mayor.SaldoFinal.ToString("N2"), Color.Success)</MudItem>
+                <MudItem xs="12" Class="d-flex justify-end">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Download" OnClick="DescargarMayorCsv">Descargar CSV</MudButton>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTable Items="_mayor.Movimientos" Dense="true" Striped="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Fecha</MudTh><MudTh>Asiento</MudTh><MudTh>Glosa</MudTh>
+                            <MudTh Style="text-align:right">Debe</MudTh><MudTh Style="text-align:right">Haber</MudTh><MudTh Style="text-align:right">Saldo</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</MudTd>
+                            <MudTd>@context.AsientoNumero</MudTd>
+                            <MudTd>@context.Glosa</MudTd>
+                            <MudTd Style="text-align:right">@(context.Debe > 0 ? context.Debe.ToString("N2") : "")</MudTd>
+                            <MudTd Style="text-align:right">@(context.Haber > 0 ? context.Haber.ToString("N2") : "")</MudTd>
+                            <MudTd Style="text-align:right">@context.SaldoAcumulado.ToString("N2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="Balance de Comprobación" Icon="@Icons.Material.Filled.Balance">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudGrid Class="align-center">
+                <MudItem xs="6" sm="4" md="3">
+                    <MudDatePicker @bind-Date="_balanceDesde" Label="Desde" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="4" md="3">
+                    <MudDatePicker @bind-Date="_balanceHasta" Label="Hasta" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="4" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CargarBalance">Ver</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+        @if (_balance != null)
+        {
+            <MudAlert Severity="@(_balance.Cuadra ? Severity.Success : Severity.Error)" Class="mb-3">
+                Debe: @_balance.TotalDebe.ToString("N2") | Haber: @_balance.TotalHaber.ToString("N2") |
+                Saldo Deudor: @_balance.TotalSaldoDeudor.ToString("N2") | Saldo Acreedor: @_balance.TotalSaldoAcreedor.ToString("N2")
+                @(_balance.Cuadra ? " — Cuadra" : " — No cuadra")
+            </MudAlert>
+            <div class="d-flex justify-end mb-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Download" OnClick="DescargarBalanceCsv">Descargar CSV</MudButton>
+            </div>
+            <MudTable Items="_balance.Cuentas" Dense="true" Striped="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Código</MudTh><MudTh>Nombre</MudTh>
+                    <MudTh Style="text-align:right">Debe</MudTh><MudTh Style="text-align:right">Haber</MudTh>
+                    <MudTh Style="text-align:right">Saldo Deudor</MudTh><MudTh Style="text-align:right">Saldo Acreedor</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Codigo</MudTd>
+                    <MudTd>@context.Nombre</MudTd>
+                    <MudTd Style="text-align:right">@context.Debe.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.Haber.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@(context.SaldoDeudor > 0 ? context.SaldoDeudor.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align:right">@(context.SaldoAcreedor > 0 ? context.SaldoAcreedor.ToString("N2") : "")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="Estado de Resultados" Icon="@Icons.Material.Filled.TrendingUp">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudGrid Class="align-center">
+                <MudItem xs="6" sm="4" md="3">
+                    <MudDatePicker @bind-Date="_erDesde" Label="Desde" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="4" md="3">
+                    <MudDatePicker @bind-Date="_erHasta" Label="Hasta" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="4" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CargarEstadoResultados">Ver</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+        @if (_estadoResultados != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="2">@Kpi("Ingresos", _estadoResultados.Ingresos.ToString("N2"), Color.Primary)</MudItem>
+                <MudItem xs="12" sm="6" md="2">@Kpi("Costo de ventas", _estadoResultados.CostoVentas.ToString("N2"), Color.Secondary)</MudItem>
+                <MudItem xs="12" sm="6" md="2">@Kpi("Utilidad bruta", _estadoResultados.UtilidadBruta.ToString("N2"), Color.Info)</MudItem>
+                <MudItem xs="12" sm="6" md="2">@Kpi("Gastos", _estadoResultados.Gastos.ToString("N2"), Color.Warning)</MudItem>
+                <MudItem xs="12" sm="6" md="4">@Kpi("Utilidad neta", _estadoResultados.UtilidadNeta.ToString("N2"), _estadoResultados.UtilidadNeta >= 0 ? Color.Success : Color.Error)</MudItem>
+                <MudItem xs="12">
+                    <MudTable Items="_estadoResultados.Detalle" Dense="true" Striped="true" Hover="true">
+                        <HeaderContent><MudTh>Grupo</MudTh><MudTh>Cuenta</MudTh><MudTh>Nombre</MudTh><MudTh Style="text-align:right">Monto</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Grupo</MudTd><MudTd>@context.Codigo</MudTd><MudTd>@context.Nombre</MudTd>
+                            <MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="Balance General" Icon="@Icons.Material.Filled.AccountBalance">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudGrid Class="align-center">
+                <MudItem xs="6" sm="4" md="3">
+                    <MudDatePicker @bind-Date="_bgFecha" Label="Al" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="4" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CargarBalanceGeneral">Ver</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+        @if (_balanceGeneral != null)
+        {
+            <MudAlert Severity="@(_balanceGeneral.Cuadra ? Severity.Success : Severity.Error)" Class="mb-3">
+                Activo: @_balanceGeneral.TotalActivo.ToString("N2") =
+                Pasivo: @_balanceGeneral.TotalPasivo.ToString("N2") + Patrimonio: @_balanceGeneral.TotalPatrimonio.ToString("N2")
+                + Utilidad: @_balanceGeneral.UtilidadEjercicio.ToString("N2") = @_balanceGeneral.TotalPasivoPatrimonio.ToString("N2")
+                @(_balanceGeneral.Cuadra ? " — Cuadra" : " — No cuadra")
+            </MudAlert>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6" Class="mb-2">Activo</MudText>
+                    <MudTable Items="_balanceGeneral.Activos" Dense="true" Striped="true">
+                        <HeaderContent><MudTh>Código</MudTh><MudTh>Nombre</MudTh><MudTh Style="text-align:right">Monto</MudTh></HeaderContent>
+                        <RowTemplate><MudTd>@context.Codigo</MudTd><MudTd>@context.Nombre</MudTd><MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd></RowTemplate>
+                    </MudTable>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6" Class="mb-2">Pasivo</MudText>
+                    <MudTable Items="_balanceGeneral.Pasivos" Dense="true" Striped="true">
+                        <HeaderContent><MudTh>Código</MudTh><MudTh>Nombre</MudTh><MudTh Style="text-align:right">Monto</MudTh></HeaderContent>
+                        <RowTemplate><MudTd>@context.Codigo</MudTd><MudTd>@context.Nombre</MudTd><MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd></RowTemplate>
+                    </MudTable>
+                    <MudText Typo="Typo.h6" Class="mt-4 mb-2">Patrimonio</MudText>
+                    <MudTable Items="_balanceGeneral.Patrimonio" Dense="true" Striped="true">
+                        <HeaderContent><MudTh>Código</MudTh><MudTh>Nombre</MudTh><MudTh Style="text-align:right">Monto</MudTh></HeaderContent>
+                        <RowTemplate><MudTd>@context.Codigo</MudTd><MudTd>@context.Nombre</MudTd><MudTd Style="text-align:right">@context.Monto.ToString("N2")</MudTd></RowTemplate>
+                    </MudTable>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private List<CuentaContableModel> _cuentasMovimiento = new();
+
+    private int _mayorCuentaId;
+    private DateTime? _mayorDesde = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private DateTime? _mayorHasta = DateTime.Now.Date;
+    private LibroMayorModel? _mayor;
+
+    private DateTime? _balanceDesde = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private DateTime? _balanceHasta = DateTime.Now.Date;
+    private BalanceComprobacionModel? _balance;
+
+    private DateTime? _erDesde = new DateTime(DateTime.Now.Year, 1, 1);
+    private DateTime? _erHasta = DateTime.Now.Date;
+    private EstadoResultadosModel? _estadoResultados;
+
+    private DateTime? _bgFecha = DateTime.Now.Date;
+    private BalanceGeneralModel? _balanceGeneral;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cResult = await ApiService.GetAsync<List<CuentaContableModel>>("api/cuentas-contables");
+        if (cResult?.Success == true) _cuentasMovimiento = (cResult.Data ?? new()).Where(c => c.EsMovimiento).OrderBy(c => c.Codigo).ToList();
+    }
+
+    private async Task CargarMayor()
+    {
+        if (_mayorCuentaId == 0) return;
+        var codigo = _cuentasMovimiento.First(c => c.Id == _mayorCuentaId).Codigo;
+        var q = $"?cuenta={codigo}&desde={_mayorDesde:yyyy-MM-dd}&hasta={_mayorHasta:yyyy-MM-dd}";
+        var result = await ApiService.GetAsync<LibroMayorModel>($"api/contabilidad/mayor{q}");
+        if (result?.Success == true) _mayor = result.Data;
+    }
+
+    private async Task CargarBalance()
+    {
+        var q = $"?desde={_balanceDesde:yyyy-MM-dd}&hasta={_balanceHasta:yyyy-MM-dd}";
+        var result = await ApiService.GetAsync<BalanceComprobacionModel>($"api/contabilidad/balance-comprobacion{q}");
+        if (result?.Success == true) _balance = result.Data;
+    }
+
+    private async Task DescargarMayorCsv()
+    {
+        if (_mayorCuentaId == 0) return;
+        var codigo = _cuentasMovimiento.First(c => c.Id == _mayorCuentaId).Codigo;
+        var q = $"?cuenta={codigo}&desde={_mayorDesde:yyyy-MM-dd}&hasta={_mayorHasta:yyyy-MM-dd}";
+        await ApiService.DownloadFileAsync(JS, $"api/contabilidad/mayor/csv{q}", $"mayor_{codigo}.csv");
+    }
+
+    private async Task DescargarBalanceCsv()
+    {
+        var q = $"?desde={_balanceDesde:yyyy-MM-dd}&hasta={_balanceHasta:yyyy-MM-dd}";
+        await ApiService.DownloadFileAsync(JS, $"api/contabilidad/balance-comprobacion/csv{q}", "balance_comprobacion.csv");
+    }
+
+    private async Task CargarEstadoResultados()
+    {
+        var q = $"?desde={_erDesde:yyyy-MM-dd}&hasta={_erHasta:yyyy-MM-dd}";
+        var result = await ApiService.GetAsync<EstadoResultadosModel>($"api/contabilidad/estado-resultados{q}");
+        if (result?.Success == true) _estadoResultados = result.Data;
+    }
+
+    private async Task CargarBalanceGeneral()
+    {
+        var q = $"?hasta={_bgFecha:yyyy-MM-dd}";
+        var result = await ApiService.GetAsync<BalanceGeneralModel>($"api/contabilidad/balance-general{q}");
+        if (result?.Success == true) _balanceGeneral = result.Data;
+    }
+
+    private RenderFragment Kpi(string titulo, string valor, Color color) =>@<MudCard Elevation="3">
+        <MudCardContent>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">@titulo</MudText>
+            <MudText Typo="Typo.h6" Color="color">S/ @valor</MudText>
+        </MudCardContent>
+    </MudCard>;
+}

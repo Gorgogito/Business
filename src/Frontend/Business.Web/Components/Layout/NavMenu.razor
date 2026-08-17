@@ -1,0 +1,41 @@
+@using Business.Web.Models
+
+<MudNavMenu>
+    @foreach (var menu in Menus.Where(m => m.ParentId == null).OrderBy(m => m.Order))
+    {
+        if (menu.Children.Any())
+        {
+            <MudNavGroup Title="@menu.Name" Icon="@menu.Icon"
+                Expanded="_expanded.Contains(menu.Id)"
+                ExpandedChanged="@(v => ToggleMenu(menu.Id, v))">
+                @foreach (var child in menu.Children.OrderBy(c => c.Order))
+                {
+                    <MudNavLink Href="@child.Route" Icon="@child.Icon" Match="NavLinkMatch.Prefix">
+                        @child.Name
+                    </MudNavLink>
+                }
+            </MudNavGroup>
+        }
+        else
+        {
+            <MudNavLink Href="@menu.Route" Icon="@menu.Icon"
+                Match="@(menu.Route == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                @menu.Name
+            </MudNavLink>
+        }
+    }
+</MudNavMenu>
+
+@code {
+    [Parameter] public List<MenuModel> Menus { get; set; } = new();
+
+    private readonly HashSet<int> _expanded = new();
+
+    private void ToggleMenu(int id, bool isExpanded)
+    {
+        if (isExpanded)
+            _expanded.Add(id);
+        else
+            _expanded.Remove(id);
+    }
+}

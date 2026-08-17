@@ -1,0 +1,232 @@
+@page "/asientos-contables"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Asientos Contables - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Asientos Contables</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid Class="align-center">
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker @bind-Date="_desde" Label="Desde" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudDatePicker @bind-Date="_hasta" Label="Hasta" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FilterAlt"
+                OnClick="LoadData" Disabled="_loading">Filtrar</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="LoadTodos" Disabled="_loading">Ver todos</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("accounting.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="OpenCreateDialog">Nuevo Asiento</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="AsientoContableModel" Items="_asientos" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true" SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.Numero" Title="Número" />
+                <TemplateColumn Title="Fecha">
+                    <CellTemplate>@context.Item.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="x => x.Glosa" Title="Glosa" />
+                <PropertyColumn Property="x => x.Tipo" Title="Tipo" />
+                <PropertyColumn Property="x => x.Referencia" Title="Referencia" />
+                <TemplateColumn Title="Debe">
+                    <CellTemplate>@context.Item.TotalDebe.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Haber">
+                    <CellTemplate>@context.Item.TotalHaber.ToString("N2")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.Estado == "ANULADO" ? Color.Error : Color.Success)">@context.Item.Estado</MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Info" Size="Size.Small"
+                            OnClick="@(() => OpenViewDialog(context.Item))" />
+                        @if (AppState.HasPermission("accounting.manage"))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small"
+                                title="Anular" Disabled="@(context.Item.Estado == "ANULADO")"
+                                OnClick="@(() => AnularAsiento(context.Item.Id))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showView && _viewing != null)
+{
+    <MudDialog Visible="_showView" VisibleChanged="@(v => _showView = v)">
+        <TitleContent><MudText Typo="Typo.h6">Asiento @_viewing.Numero</MudText></TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body2" Class="mb-2">@_viewing.Glosa</MudText>
+            <MudTable Items="_viewing.Detalles" Dense="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>Cuenta</MudTh><MudTh Style="text-align:right">Debe</MudTh><MudTh Style="text-align:right">Haber</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.CuentaCodigo - @context.CuentaNombre</MudTd>
+                    <MudTd Style="text-align:right">@(context.Debe > 0 ? context.Debe.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align:right">@(context.Haber > 0 ? context.Haber.ToString("N2") : "")</MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd><b>Total</b></MudTd>
+                    <MudTd Style="text-align:right"><b>@_viewing.TotalDebe.ToString("N2")</b></MudTd>
+                    <MudTd Style="text-align:right"><b>@_viewing.TotalHaber.ToString("N2")</b></MudTd>
+                </FooterContent>
+            </MudTable>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showView = false)">Cerrar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@if (_showCreate)
+{
+    <MudDialog Visible="_showCreate" VisibleChanged="@(v => _showCreate = v)" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Nuevo Asiento Manual</MudText></TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_fecha" Label="Fecha" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_glosa" Label="Glosa" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1">Líneas</MudText>
+                    @foreach (var lin in _lineas)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="5">
+                                <MudSelect @bind-Value="lin.CuentaContableId" Label="Cuenta" Variant="Variant.Outlined" Dense="true">
+                                    @foreach (var c in _cuentasMovimiento)
+                                    { <MudSelectItem Value="@c.Id">@c.Codigo - @c.Nombre</MudSelectItem> }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="lin.Debe" Label="Debe" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="3">
+                                <MudNumericField @bind-Value="lin.Haber" Label="Haber" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" />
+                            </MudItem>
+                            <MudItem xs="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => _lineas.Remove(lin))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Size="Size.Small" Class="mt-2"
+                        OnClick="@(() => _lineas.Add(new AsientoDetalleModel()))">Agregar línea</MudButton>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAlert Severity="@(Cuadra ? Severity.Success : Severity.Warning)" Dense="true">
+                        Debe: @TotalDebe.ToString("N2") &nbsp;|&nbsp; Haber: @TotalHaber.ToString("N2")
+                        @(Cuadra ? " — Cuadra" : " — No cuadra")
+                    </MudAlert>
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showCreate = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsiento" Disabled="_saving">Registrar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<AsientoContableModel> _asientos = new();
+    private List<CuentaContableModel> _cuentasMovimiento = new();
+    private bool _loading = true, _saving;
+    private bool _showCreate, _showView;
+    private AsientoContableModel? _viewing;
+    private DateTime? _desde = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private DateTime? _hasta = DateTime.Now.Date;
+    private DateTime? _fecha = DateTime.Now.Date;
+    private string _glosa = string.Empty;
+    private List<AsientoDetalleModel> _lineas = new();
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    private decimal TotalDebe => _lineas.Sum(l => l.Debe);
+    private decimal TotalHaber => _lineas.Sum(l => l.Haber);
+    private bool Cuadra => _lineas.Count >= 2 && Math.Abs(TotalDebe - TotalHaber) < 0.01m && TotalDebe > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cResult = await ApiService.GetAsync<List<CuentaContableModel>>("api/cuentas-contables");
+        if (cResult?.Success == true) _cuentasMovimiento = (cResult.Data ?? new()).Where(c => c.EsMovimiento).OrderBy(c => c.Codigo).ToList();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var q = $"?desde={_desde:yyyy-MM-dd}&hasta={_hasta:yyyy-MM-dd}";
+        var result = await ApiService.GetAsync<List<AsientoContableModel>>($"api/asientos-contables/periodo{q}");
+        if (result?.Success == true) _asientos = (result.Data ?? new()).OrderByDescending(a => a.Fecha).ToList();
+        _loading = false;
+    }
+
+    private async Task LoadTodos()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<AsientoContableModel>>("api/asientos-contables");
+        if (result?.Success == true) _asientos = (result.Data ?? new()).OrderByDescending(a => a.Fecha).ToList();
+        _loading = false;
+    }
+
+    private void OpenViewDialog(AsientoContableModel a) { _viewing = a; _showView = true; }
+
+    private void OpenCreateDialog()
+    {
+        _fecha = DateTime.Now.Date;
+        _glosa = string.Empty;
+        _lineas = new() { new AsientoDetalleModel(), new AsientoDetalleModel() };
+        _showCreate = true;
+    }
+
+    private async Task SaveAsiento()
+    {
+        if (string.IsNullOrWhiteSpace(_glosa) || _lineas.Count(l => l.CuentaContableId > 0 && (l.Debe > 0 || l.Haber > 0)) < 2)
+        {
+            Snackbar.Add("Complete la glosa y al menos dos líneas con cuenta e importe", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        var data = new
+        {
+            Fecha = _fecha ?? DateTime.Now,
+            Glosa = _glosa,
+            Detalles = _lineas.Where(l => l.CuentaContableId > 0).Select(l => new { l.CuentaContableId, l.Debe, l.Haber })
+        };
+        var result = await ApiService.PostAsync<AsientoContableModel>("api/asientos-contables", data);
+        if (result?.Success == true) { Snackbar.Add(result.Message, Severity.Success); _showCreate = false; await LoadTodos(); }
+        else Snackbar.Add(result?.Message ?? "Error al registrar el asiento", Severity.Error);
+        _saving = false;
+    }
+
+    private async Task AnularAsiento(int id)
+    {
+        var result = await ApiService.PatchAsync<AsientoContableModel>($"api/asientos-contables/{id}/anular");
+        if (result?.Success == true) { Snackbar.Add("Asiento anulado", Severity.Success); await LoadTodos(); }
+        else Snackbar.Add(result?.Message ?? "No se pudo anular el asiento", Severity.Error);
+    }
+}

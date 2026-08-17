@@ -1,0 +1,145 @@
+﻿@page "/sucursales"
+@inject ApiService ApiService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+
+<PageTitle>Sucursales - Business ERP</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gestión de Sucursales</MudText>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderActions>
+            @if (AppState.HasPermission("config.manage"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialog">Nueva Sucursal</MudButton>
+            }
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudDataGrid T="SucursalModel" Items="_sucursales" Loading="_loading"
+            Filterable="true" Hover="true" Striped="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Codigo" Title="Código" />
+                <PropertyColumn Property="x => x.Nombre" Title="Nombre" />
+                <PropertyColumn Property="x => x.EmpresaNombre" Title="Empresa" />
+                <PropertyColumn Property="x => x.Telefono" Title="Teléfono" />
+                <PropertyColumn Property="x => x.Direccion" Title="Dirección" />
+                <TemplateColumn Title="Estado">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small"
+                            Color="@(context.Item.IsActive ? Color.Success : Color.Error)">
+                            @(context.Item.IsActive ? "Activo" : "Inactivo")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Acciones">
+                    <CellTemplate>
+                        @if (AppState.HasPermission("config.manage"))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                            OnClick="@(() => OpenEditDialog(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            OnClick="@(() => DeleteSucursal(context.Item.Id))" />
+                    }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@if (_showDialog)
+{
+    <MudDialog Visible="_showDialog" VisibleChanged="@(v => _showDialog = v)">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editing.Id == 0 ? "Nueva Sucursal" : "Editar Sucursal")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Codigo" Label="Código" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_editing.EmpresaId" Label="Empresa" Variant="Variant.Outlined" Required="true">
+                        @foreach (var emp in _empresas)
+                        {
+                            <MudSelectItem Value="@emp.Id">@emp.RazonSocial</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Nombre" Label="Nombre" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.Telefono" Label="Teléfono" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.Direccion" Label="Dirección" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)">Cancelar</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSucursal">Guardar</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<SucursalModel> _sucursales = new();
+    private List<EmpresaModel> _empresas = new();
+    private bool _loading = true;
+    private bool _showDialog;
+    private SucursalModel _editing = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var empResult = await ApiService.GetAsync<List<EmpresaModel>>("api/empresas");
+        if (empResult?.Success == true) _empresas = empResult.Data ?? new();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var result = await ApiService.GetAsync<List<SucursalModel>>("api/sucursales");
+        if (result?.Success == true) _sucursales = result.Data ?? new();
+        _loading = false;
+    }
+
+    private void OpenCreateDialog() { _editing = new SucursalModel(); _showDialog = true; }
+
+    private void OpenEditDialog(SucursalModel s)
+    {
+        _editing = new SucursalModel { Id = s.Id, Nombre = s.Nombre, Codigo = s.Codigo,
+            Direccion = s.Direccion, Telefono = s.Telefono, EmpresaId = s.EmpresaId };
+        _showDialog = true;
+    }
+
+    private async Task SaveSucursal()
+    {
+        var data = new { _editing.Nombre, _editing.Codigo, _editing.Direccion, _editing.Telefono, _editing.EmpresaId };
+        ApiResponse<SucursalModel>? result;
+        if (_editing.Id == 0)
+            result = await ApiService.PostAsync<SucursalModel>("api/sucursales", data);
+        else
+            result = await ApiService.PutAsync<SucursalModel>($"api/sucursales/{_editing.Id}", data);
+
+        if (result?.Success == true)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _showDialog = false;
+            await LoadData();
+        }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+
+    private async Task DeleteSucursal(int id)
+    {
+        var result = await ApiService.DeleteAsync<bool>($"api/sucursales/{id}");
+        if (result?.Success == true) { Snackbar.Add("Sucursal eliminada", Severity.Success); await LoadData(); }
+        else Snackbar.Add(result?.Message ?? "Error", Severity.Error);
+    }
+}
