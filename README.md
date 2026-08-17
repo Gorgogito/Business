@@ -71,6 +71,34 @@ Resto de parámetros JWT (no sensibles) en `appsettings.json`:
 "JwtSettings": { "Issuer": "BusinessERP", "Audience": "BusinessERP-Client", "ExpiryMinutes": "60" }
 ```
 
+## Configuración inicial (clonar el repo)
+
+Al clonar, `appsettings.json` del backend viene con `ConnectionStrings` y `JwtSettings:Secret`
+vacíos a propósito. Sigue estos pasos antes de ejecutar el proyecto por primera vez:
+
+1. **Revisa la plantilla de referencia**: `src/Backend/Business.API/appsettings.Example.json`
+   muestra la estructura completa esperada (connection string, clave JWT, orígenes CORS). No
+   la copies como `appsettings.json` real ni le pongas valores reales — es solo referencia.
+2. **Configura los secretos con user-secrets** (recomendado, no toca ningún archivo versionado):
+   ```bash
+   cd src/Backend/Business.API
+   dotnet user-secrets init   # solo la primera vez, ya debería existir el UserSecretsId
+   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Data Source=TU_SERVIDOR;Initial Catalog=BusinessERP;User ID=tu_usuario;Password=tu_clave;Encrypt=True;TrustServerCertificate=True"
+   dotnet user-secrets set "JwtSettings:Secret" "<genera-una-clave-aleatoria-de-al-menos-32-caracteres>"
+   ```
+   Puedes generar una clave aleatoria con, por ejemplo:
+   ```bash
+   openssl rand -base64 48
+   ```
+3. **Prepara SQL Server**: crea (o reutiliza) una instancia local, y usa un usuario con permisos
+   mínimos sobre la base `BusinessERP` en lugar de `sa` si es posible.
+4. **Levanta el backend**: `dotnet run` desde `src/Backend/Business.API` — al iniciar, EF Core
+   aplica las migraciones y crea la base de datos automáticamente si no existe.
+5. **Levanta el frontend**: `dotnet run` desde `src/Frontend/Business.Web`. Si tu API no corre
+   en `http://localhost:5000`, ajusta `ApiBaseUrl` en `src/Frontend/Business.Web/appsettings.json`
+   (ese archivo no tiene datos sensibles, se versiona tal cual).
+6. Inicia sesión con las [credenciales iniciales](#credenciales-iniciales) y cámbialas cuanto antes.
+
 ## Ejecución
 
 ### Backend (API)
